@@ -15,7 +15,12 @@ import time
 import json
 import asyncio
 import logging
+import warnings
 from typing import Optional, Dict, Any
+
+# Suppress macOS LibreSSL 2.8.3 warning emitted by urllib3 v2 on system Python
+warnings.filterwarnings("ignore", message=".*LibreSSL.*")
+warnings.filterwarnings("ignore", message=".*urllib3 v2 only supports OpenSSL.*")
 
 from pymobiledevice3 import usbmux
 from pymobiledevice3.lockdown import create_using_usbmux
