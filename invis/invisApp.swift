@@ -2,31 +2,21 @@
 //  invisApp.swift
 //  invis
 //
-//  Created by Jason Zhou on 9/3/26.
+//  Main entry point for the Invis Wired Location Spoofing application.
 //
 
 import SwiftUI
-import SwiftData
 
 @main
 struct invisApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([
-            Item.self,
-        ])
-        let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
-
-        do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
-        } catch {
-            fatalError("Could not create ModelContainer: \(error)")
-        }
-    }()
-
     var body: some Scene {
         WindowGroup {
             ContentView()
         }
-        .modelContainer(sharedModelContainer)
+        #if os(macOS)
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified(showsTitle: true))
+        .defaultSize(width: 1100, height: 750)
+        #endif
     }
 }
