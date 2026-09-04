@@ -182,25 +182,6 @@ phone_manager = ConnectedPhoneManager()
 async def handle_app_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, source: str = "USB"):
     print(f"{GREEN}✔ Invis iOS App Connected ({source})!{RESET} Streaming firmware protocol.")
 
-    # Immediately push greeting pong so the iOS app discovers device state on tick 0
-    try:
-        greeting = {
-            "status": "pong",
-            "device_connected": phone_manager.active_udid is not None,
-            "device_name": phone_manager.device_name,
-            "model": phone_manager.model,
-            "version": f"MacBook DVT Bridge (iOS {phone_manager.version})",
-            "udid": phone_manager.active_udid or "None",
-            "is_spoofing": phone_manager.is_spoofing,
-            "lat": phone_manager.current_lat,
-            "lon": phone_manager.current_lon,
-            "ts": time.time()
-        }
-        writer.write((json.dumps(greeting) + "\n").encode("utf-8"))
-        await writer.drain()
-    except Exception as e:
-        logger.error(f"Failed to send initial greeting pong: {e}")
-
     while True:
         try:
             data = await reader.readline()
