@@ -53,5 +53,8 @@ fi
 echo -e "${GREEN}✔ Environment ready.${NC}"
 echo -e "${CYAN}Starting Mac USB Bridge daemon...${NC}\n"
 
+# Clean up any stale previous bridge processes
+pkill -f "mac_bridge.py" 2>/dev/null || true
+
 # Launch mac_bridge.py passing through any arguments
 exec "$VENV_DIR/bin/python3" "$REPO_DIR/scripts/mac_bridge.py" "$@"
