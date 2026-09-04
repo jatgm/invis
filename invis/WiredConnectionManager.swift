@@ -275,11 +275,9 @@ public final class WiredConnectionManager: ObservableObject {
     }
     #endif
 
-    // MARK: - iOS & Network Transport Implementation (CDC-NCM)
-    private func probeUsbEthernet() {
-        status = .connecting(detail: "Probing link-local 192.168.7.1...")
-
-        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(picoIP), port: NWEndpoint.Port(rawValue: picoTCPPort)!)
+    // MARK: - iOS & Network Transport Implementation (CDC-NCM / Local Emulator)
+    private func probeUsbEthernet(host: String = "192.168.7.1") {
+        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: picoTCPPort)!)
         let params = NWParameters.tcp
         let conn = NWConnection(to: endpoint, using: params)
 
@@ -289,15 +287,19 @@ public final class WiredConnectionManager: ObservableObject {
                 switch state {
                 case .ready:
                     self.nwConnection = conn
-                    self.activeTransportName = "USB CDC-NCM Ethernet (192.168.7.1:\(self.picoTCPPort))"
+                    self.activeTransportName = host == "127.0.0.1" ? "Mac Pico Emulator (127.0.0.1:\(self.picoTCPPort))" : "USB CDC-NCM Ethernet (\(host):\(self.picoTCPPort))"
                     self.startNetworkReceiveLoop()
                     self.startHeartbeat()
                     self.sendPing()
                 case .failed(let error):
                     conn.cancel()
-                    self.log(tag: "ERR", message: "Network connection failed: \(error.localizedDescription)")
-                    if !self.status.isConnected {
-                        self.status = .disconnected(reason: "Plug in Raspberry Pi Pico via USB")
+                    if host == "192.168.7.1" {
+                        // Fallback: check if local mock emulator is running on MacBook
+                        self.probeUsbEthernet(host: "127.0.0.1")
+                    } else {
+                        if !self.status.isConnected {
+                            self.status = .disconnected(reason: "Plug in Raspberry Pi Pico via USB")
+                        }
                     }
                 case .cancelled:
                     break
