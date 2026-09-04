@@ -1,5 +1,29 @@
+# macOS
 .DS_Store
-.venv/
+.AppleDouble
+.LSOverride
+
+# Xcode & Apple Developer
 build/
 DerivedData/
 *.xcuserstate
+xcuserdata/
+*.xcscmblueprint
+
+# Python & Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# C / Native Build Artifacts
+*.o
+*.a
+*.dylib
+tests/test_pico_c
+pico-firmware/build/
+

@@ -10,6 +10,7 @@ import time
 import json
 import math
 import select
+import random
 from machine import Pin, UART
 
 # Hardware setup
@@ -39,7 +40,6 @@ CABLE_TIMEOUT_MS = 3500
 
 def generate_gaussian(mean=0.0, stddev=1.0):
     """Approximate standard normal using Central Limit Theorem (12 uniforms)."""
-    import random
     s = sum(random.random() for _ in range(12)) - 6.0
     return mean + s * stddev
 
@@ -69,12 +69,12 @@ def emit_nmea():
     # $GPGGA
     gga_raw = f"GPGGA,120000.00,{lat_deg:02d}{lat_min:07.4f},{lat_hemi},{lon_deg:03d}{lon_min:07.4f},{lon_hemi},1,08,1.0,{altitude:.1f},M,0.0,M,,"
     gga_crc = calculate_nmea_checksum(gga_raw)
-    uart.write(f"${gga_raw}*{gga_crc}\r\n")
+    uart.write(f"${gga_raw}*{gga_crc}\r\n".encode("ascii"))
 
     # $GPRMC
     rmc_raw = f"GPRMC,120000.00,A,{lat_deg:02d}{lat_min:07.4f},{lat_hemi},{lon_deg:03d}{lon_min:07.4f},{lon_hemi},{speed_knots:.1f},{heading:.1f},010126,,,A"
     rmc_crc = calculate_nmea_checksum(rmc_raw)
-    uart.write(f"${rmc_raw}*{rmc_crc}\r\n")
+    uart.write(f"${rmc_raw}*{rmc_crc}\r\n".encode("ascii"))
 
 def send_response(data: dict):
     line = json.dumps(data) + "\n"
@@ -147,23 +147,8 @@ def handle_command(line_str: str):
     except Exception as e:
         send_response({"status": "err", "msg": str(e)})
 
-print(f"[{FIRMWARE_VERSION}] Started. Listening on USB CDC...")
-
-# Main Loop
-rx_poll = select.poll()
-rx_poll.register(sys.stdin, select.POLLIN)
-
-while True:
-    now = time.ticks_ms()
-
-    # Check for incoming USB serial lines
-    events = rx_poll.poll(5) # 5ms timeout
-    if events:
-        line = sys.stdin.readline()
-        if line and line.strip():
-            led.value(1)
-            handle_command(line.strip())
-            led.value(0)
+def tick(now):
+    global state, current_lat, current_lon, last_jitter_time, last_nmea_time
 
     # Watchdog failsafe: Anti-Rubberbanding
     if state == STATE_SPOOFING:
@@ -185,3 +170,25 @@ while True:
     if time.ticks_diff(now, last_nmea_time) >= 1000:
         last_nmea_time = now
         emit_nmea()
+
+def main():
+    print(f"[{FIRMWARE_VERSION}] Started. Listening on USB CDC...")
+    rx_poll = select.poll()
+    rx_poll.register(sys.stdin, select.POLLIN)
+
+    while True:
+        now = time.ticks_ms()
+
+        # Check for incoming USB serial lines
+        events = rx_poll.poll(5) # 5ms timeout
+        if events:
+            line = sys.stdin.readline()
+            if line and line.strip():
+                led.value(1)
+                handle_command(line.strip())
+                led.value(0)
+
+        tick(now)
+
+if __name__ == "__main__":
+    main()

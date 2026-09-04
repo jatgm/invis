@@ -228,31 +228,38 @@ def run_emulator():
     print(f"Listening on:     {BOLD}tcp://127.0.0.1:{PORT}{RESET}")
     print(f"Status:           {YELLOW}Waiting for Invis Swift App to connect...{RESET}")
     print(f"Tip:              Launch Invis.app or click 'Detect' in the status bar.\n")
+    def handle_connection(client_sock, client_addr):
+        print(f"{GREEN}✔ App Connected!{RESET} Established physical link with {client_addr}")
+        client_sock.setblocking(True)
+        rx_buffer = ""
+
+        try:
+            while dongle.running:
+                data = client_sock.recv(1024)
+                if not data:
+                    print(f"{YELLOW}Host closed connection.{RESET}")
+                    break
+
+                rx_buffer += data.decode("utf-8", errors="ignore")
+                while "\n" in rx_buffer:
+                    line, rx_buffer = rx_buffer.split("\n", 1)
+                    line = line.strip()
+                    if line:
+                        resp = dongle.handle_payload(line)
+                        client_sock.sendall((resp + "\n").encode("utf-8"))
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            print(f"{RED}Host abruptly disconnected (Simulating cable unplug).{RESET}")
+        finally:
+            try:
+                client_sock.close()
+            except Exception:
+                pass
 
     try:
         while True:
             client_sock, client_addr = server.accept()
-            print(f"{GREEN}✔ App Connected!{RESET} Established physical link with {client_addr}")
-            client_sock.setblocking(True)
-            rx_buffer = ""
-
-            while True:
-                try:
-                    data = client_sock.recv(1024)
-                    if not data:
-                        print(f"{YELLOW}Host closed connection.{RESET}")
-                        break
-
-                    rx_buffer += data.decode("utf-8", errors="ignore")
-                    while "\n" in rx_buffer:
-                        line, rx_buffer = rx_buffer.split("\n", 1)
-                        line = line.strip()
-                        if line:
-                            resp = dongle.handle_payload(line)
-                            client_sock.sendall((resp + "\n").encode("utf-8"))
-                except (ConnectionResetError, BrokenPipeError):
-                    print(f"{RED}Host abruptly disconnected (Simulating cable unplug).{RESET}")
-                    break
+            client_thread = threading.Thread(target=handle_connection, args=(client_sock, client_addr), daemon=True)
+            client_thread.start()
     except KeyboardInterrupt:
         print(f"\n{YELLOW}Stopping emulator.{RESET}")
     finally:

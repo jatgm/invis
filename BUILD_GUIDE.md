@@ -22,7 +22,8 @@ The project is pre-configured with multiplatform support (`macosx`, `iphoneos`, 
 
 ### A. Open in Xcode
 ```bash
-cd /Users/jasonzhou/Developer/invis
+git clone https://github.com/jatgm/invis.git
+cd invis
 open invis.xcodeproj
 ```
 

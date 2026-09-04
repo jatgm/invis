@@ -82,7 +82,7 @@ public struct ContentView: View {
                         )
 
                         // Collapsible Bottom Card for iPhone
-                        iPhoneControlSheet
+                        iPhoneControlSheet(geo: geo)
                     }
                 }
             }
@@ -149,25 +149,63 @@ public struct ContentView: View {
     #if os(iOS)
     @State private var isSheetExpanded: Bool = false
 
-    private var iPhoneControlSheet: some View {
-        VStack(spacing: 0) {
-            // Drag handle
-            Capsule()
-                .fill(Color.secondary.opacity(0.4))
-                .frame(width: 36, height: 5)
-                .padding(.vertical, 8)
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        isSheetExpanded.toggle()
-                    }
+    private func iPhoneControlSheet(geo: GeometryProxy) -> some View {
+        let collapsedHeight: CGFloat = 290
+        let expandedHeight: CGFloat = min(geo.size.height * 0.75, 580)
+        let currentHeight = isSheetExpanded ? expandedHeight : collapsedHeight
+
+        return VStack(spacing: 0) {
+            // Drag handle area with tap & swipe gesture
+            VStack(spacing: 0) {
+                Capsule()
+                    .fill(Color.secondary.opacity(0.4))
+                    .frame(width: 36, height: 5)
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isSheetExpanded.toggle()
                 }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 12)
+                    .onEnded { value in
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            if value.translation.height < -25 {
+                                isSheetExpanded = true
+                            } else if value.translation.height > 25 {
+                                isSheetExpanded = false
+                            }
+                        }
+                    }
+            )
 
             sidebarContent
-                .frame(maxHeight: isSheetExpanded ? 460 : 180)
+                .frame(maxHeight: currentHeight)
+
+            // Bottom safe area spacing so buttons sit cleanly above home indicator
+            Spacer(minLength: 0)
+                .frame(height: max(geo.safeAreaInsets.bottom, 16))
         }
-        .background(.ultraThickMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: -4)
+        .frame(maxWidth: .infinity)
+        .background(
+            Rectangle()
+                .fill(.ultraThickMaterial)
+                .ignoresSafeArea(edges: .bottom)
+        )
+        .clipShape(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 24,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 24,
+                style: .continuous
+            )
+        )
+        .shadow(color: Color.black.opacity(0.28), radius: 12, x: 0, y: -4)
         .ignoresSafeArea(edges: .bottom)
     }
     #endif

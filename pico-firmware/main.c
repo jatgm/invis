@@ -136,6 +136,17 @@ static void send_usb_response(const char* json_str) {
     }
 }
 
+// Helper to find value after a JSON key (e.g. "\"lat\"")
+static const char* find_value_after_key(const char* line, const char* key) {
+    const char* p = strstr(line, key);
+    if (!p) return NULL;
+    p += strlen(key);
+    while (*p == ' ' || *p == ':' || *p == '\t') {
+        p++;
+    }
+    return p;
+}
+
 // MARK: - JSON Command Parser
 static void process_incoming_command(char* line) {
     ctx.last_packet_time_ms = to_ms_since_boot(get_absolute_time());
@@ -147,12 +158,8 @@ static void process_incoming_command(char* line) {
 
     // Quick command identification
     if (strstr(line, "\"cmd\":\"ping\"") || strstr(line, "\"cmd\": \"ping\"")) {
-        // Extract timestamp if provided
-        char* ts_ptr = strstr(line, "\"ts\":");
-        double client_ts = 0.0;
-        if (ts_ptr) {
-            sscanf(ts_ptr + 5, "%lf", &client_ts);
-        }
+        const char* ts_val = find_value_after_key(line, "\"ts\"");
+        double client_ts = ts_val ? strtod(ts_val, NULL) : 0.0;
 
         char resp[180];
         snprintf(resp, sizeof(resp),
@@ -163,18 +170,18 @@ static void process_incoming_command(char* line) {
     }
 
     if (strstr(line, "\"cmd\":\"teleport\"") || strstr(line, "\"cmd\": \"teleport\"")) {
-        char* lat_ptr = strstr(line, "\"lat\":");
-        char* lon_ptr = strstr(line, "\"lon\":");
-        char* alt_ptr = strstr(line, "\"alt\":");
-        char* spd_ptr = strstr(line, "\"speed\":");
-        char* hdg_ptr = strstr(line, "\"heading\":");
+        const char* lat_val = find_value_after_key(line, "\"lat\"");
+        const char* lon_val = find_value_after_key(line, "\"lon\"");
+        const char* alt_val = find_value_after_key(line, "\"alt\"");
+        const char* spd_val = find_value_after_key(line, "\"speed\"");
+        const char* hdg_val = find_value_after_key(line, "\"heading\"");
 
-        if (lat_ptr && lon_ptr) {
-            ctx.current_lat = strtod(lat_ptr + (lat_ptr[5] == ' ' ? 6 : 5), NULL);
-            ctx.current_lon = strtod(lon_ptr + (lon_ptr[5] == ' ' ? 6 : 5), NULL);
-            if (alt_ptr) ctx.altitude = strtod(alt_ptr + (alt_ptr[5] == ' ' ? 6 : 5), NULL);
-            if (spd_ptr) ctx.speed_kmh = strtod(spd_ptr + (spd_ptr[7] == ' ' ? 8 : 7), NULL);
-            if (hdg_ptr) ctx.heading = strtod(hdg_ptr + (hdg_ptr[9] == ' ' ? 10 : 9), NULL);
+        if (lat_val && lon_val) {
+            ctx.current_lat = strtod(lat_val, NULL);
+            ctx.current_lon = strtod(lon_val, NULL);
+            if (alt_val) ctx.altitude = strtod(alt_val, NULL);
+            if (spd_val) ctx.speed_kmh = strtod(spd_val, NULL);
+            if (hdg_val) ctx.heading = strtod(hdg_val, NULL);
 
             ctx.state = STATE_SPOOFING;
             emit_nmea_sentences();
@@ -187,14 +194,14 @@ static void process_incoming_command(char* line) {
     }
 
     if (strstr(line, "\"cmd\":\"jitter\"") || strstr(line, "\"cmd\": \"jitter\"")) {
-        char* en_ptr = strstr(line, "\"enabled\":");
-        char* rad_ptr = strstr(line, "\"radius_meters\":");
+        const char* en_val = find_value_after_key(line, "\"enabled\"");
+        const char* rad_val = find_value_after_key(line, "\"radius_meters\"");
 
-        if (en_ptr) {
-            ctx.jitter_enabled = (strstr(en_ptr, "true") != NULL);
+        if (en_val) {
+            ctx.jitter_enabled = (strncmp(en_val, "true", 4) == 0);
         }
-        if (rad_ptr) {
-            ctx.jitter_radius_m = strtod(rad_ptr + (rad_ptr[15] == ' ' ? 16 : 15), NULL);
+        if (rad_val) {
+            ctx.jitter_radius_m = strtod(rad_val, NULL);
         }
 
         char resp[128];

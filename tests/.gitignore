@@ -1,0 +1,3 @@
+test_pico_c
+*.o
+__pycache__/

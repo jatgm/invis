@@ -204,7 +204,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             if cmd == "jitter":
                 phone_manager.jitter_enabled = bool(req.get("enabled", False))
                 phone_manager.jitter_radius_m = float(req.get("radius_meters", 1.0))
-                resp = {"status": "ok", "cmd": "jitter", "enabled": phone_manager.jitter_enabled}
+                resp = {"status": "ok", "cmd": "jitter", "enabled": phone_manager.jitter_enabled, "radius": phone_manager.jitter_radius_m}
                 writer.write((json.dumps(resp) + "\n").encode("utf-8"))
                 await writer.drain()
                 continue
@@ -217,7 +217,8 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 continue
 
             if cmd == "route":
-                resp = {"status": "ok", "cmd": "route"}
+                points = req.get("points", [])
+                resp = {"status": "ok", "cmd": "route", "count": len(points)}
                 writer.write((json.dumps(resp) + "\n").encode("utf-8"))
                 await writer.drain()
                 continue

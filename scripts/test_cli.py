@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """
-test_cli.py - Automated Test Runner for Raspberry Pi Pico Firmware Logic on macOS.
+test_cli.py - Master Automated Test Runner for Raspberry Pi Pico Firmware on macOS.
 
 Verifies:
-1. Ping / Pong latency heartbeat
-2. Instant coordinate teleport
-3. Micro-jitter Gaussian drift configuration
-4. Route buffer ingestion
-5. Safety killswitch reset
-6. NMEA sentence validation
+1. MicroPython firmware (`pico-firmware/micropython/main.py`)
+2. C firmware (`pico-firmware/main.c`) compiled with clang
+3. End-to-end Socket & Protocol Integration (`scripts/mock_pico_dongle.py`)
 """
 
 import sys
+import os
 import time
 import json
 import socket
@@ -23,11 +21,35 @@ CYAN = "\033[96m"
 BOLD = "\033[1m"
 RESET = "\033[0m"
 
-def run_tests():
-    print(f"\n{BOLD}{CYAN}=== Testing Raspberry Pi Pico Firmware Logic on macOS ==={RESET}\n")
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+def run_micropython_tests():
+    res = subprocess.run([sys.executable, os.path.join(REPO_ROOT, "tests", "test_pico_micropython.py")])
+    if res.returncode != 0:
+        print(f"{RED}MicroPython firmware tests failed!{RESET}")
+        sys.exit(1)
+
+def run_c_firmware_tests():
+    test_src = os.path.join(REPO_ROOT, "tests", "test_pico_c.c")
+    test_bin = os.path.join(REPO_ROOT, "tests", "test_pico_c")
+    include_dir = os.path.join(REPO_ROOT, "tests", "mock_pico")
+
+    compile_res = subprocess.run([
+        "clang", "-O2", f"-I{include_dir}", test_src, "-o", test_bin
+    ])
+    if compile_res.returncode != 0:
+        print(f"{RED}Failed to compile C firmware tests!{RESET}")
+        sys.exit(1)
+
+    run_res = subprocess.run([test_bin])
+    if run_res.returncode != 0:
+        print(f"{RED}C firmware unit tests failed!{RESET}")
+        sys.exit(1)
+
+def run_integration_tests():
     # Start mock emulator
-    proc = subprocess.Popen([sys.executable, "scripts/mock_pico_dongle.py"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    proc = subprocess.Popen([sys.executable, os.path.join(REPO_ROOT, "scripts", "mock_pico_dongle.py")],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     time.sleep(0.8) # Wait for server to bind
 
     passed = 0
@@ -96,7 +118,23 @@ def run_tests():
         proc.terminate()
         proc.wait()
 
-    print(f"\n{BOLD}{GREEN}All {passed}/{total} Firmware Logic Tests Passed Successfully!{RESET}\n")
+    print(f"\n{BOLD}{GREEN}All {passed}/{total} Integration Tests Passed Successfully!{RESET}")
+
+def main():
+    print(f"\n{BOLD}{GREEN}=================================================================={RESET}", flush=True)
+    print(f"{BOLD}  Invis Raspberry Pi Firmware & Communication Test Suite (macOS)  {RESET}", flush=True)
+    print(f"{BOLD}{GREEN}=================================================================={RESET}", flush=True)
+
+    print(f"\n{BOLD}{CYAN}=== 1. Testing MicroPython Firmware (pico-firmware/micropython/main.py) ==={RESET}", flush=True)
+    run_micropython_tests()
+
+    print(f"\n{BOLD}{CYAN}=== 2. Testing C / TinyUSB Firmware (pico-firmware/main.c) ==={RESET}", flush=True)
+    run_c_firmware_tests()
+
+    print(f"\n{BOLD}{CYAN}=== 3. Testing Dongle Emulator & Protocol Integration ==={RESET}\n", flush=True)
+    run_integration_tests()
+
+    print(f"\n{BOLD}{GREEN}✔ ALL RASPBERRY PI FIRMWARE & LOGIC TESTS COMPLETED SUCCESSFULLY!{RESET}\n", flush=True)
 
 if __name__ == "__main__":
-    run_tests()
+    main()
