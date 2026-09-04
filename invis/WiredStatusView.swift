@@ -126,6 +126,9 @@ public struct WiredStatusView: View {
     private var statusIconName: String {
         switch connectionManager.status {
         case .connected:
+            if connectionManager.connectedDeviceName != nil {
+                return "iphone.gen3"
+            }
             return "cable.connector.horizontal"
         case .connecting:
             return "antenna.radiowaves.left.and.right"
@@ -137,17 +140,23 @@ public struct WiredStatusView: View {
     private var statusHeadline: String {
         switch connectionManager.status {
         case .connected:
+            if let devName = connectionManager.connectedDeviceName {
+                return "\(devName) Connected"
+            }
             return "Pico Dongle Connected"
         case .connecting:
             return "Establishing Link..."
         case .disconnected:
-            return "Hardware Disconnected"
+            return "No Device Detected"
         }
     }
 
     private var statusSubheadline: String {
         switch connectionManager.status {
         case .connected(_, _, let transport):
+            if let model = connectionManager.connectedDeviceModel {
+                return "\(model) • Wired USB Link Ready"
+            }
             return "Active link: \(transport)"
         case .connecting(let detail):
             return detail

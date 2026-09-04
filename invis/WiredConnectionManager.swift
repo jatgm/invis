@@ -70,9 +70,11 @@ public final class WiredConnectionManager: ObservableObject {
     public static let shared = WiredConnectionManager()
 
     // Published UI States
-    @Published public var status: ConnectionStatus = .disconnected(reason: "Plug in Raspberry Pi Pico via USB")
+    @Published public var status: ConnectionStatus = .disconnected(reason: "Plug in iPhone or Raspberry Pi Pico via USB")
     @Published public var transportMode: TransportMode = .auto
     @Published public var activeTransportName: String = "None"
+    @Published public var connectedDeviceName: String? = nil
+    @Published public var connectedDeviceModel: String? = nil
     @Published public var currentSpoofedLocation: CLLocationCoordinate2D? = nil
     @Published public var isSpoofingActive: Bool = false
     @Published public var isRoutePlaying: Bool = false
@@ -155,9 +157,13 @@ public final class WiredConnectionManager: ObservableObject {
         }
         #endif
 
+        #if os(macOS)
+        probeUsbEthernet(host: "127.0.0.1")
+        #else
         if transportMode == .auto || transportMode == .usbEthernet {
-            probeUsbEthernet()
+            probeUsbEthernet(host: "192.168.7.1")
         }
+        #endif
     }
 
     // MARK: - macOS POSIX Serial Implementation (CDC-ACM)
@@ -287,10 +293,19 @@ public final class WiredConnectionManager: ObservableObject {
                 switch state {
                 case .ready:
                     self.nwConnection = conn
-                    self.activeTransportName = host == "127.0.0.1" ? "Mac Pico Emulator (127.0.0.1:\(self.picoTCPPort))" : "USB CDC-NCM Ethernet (\(host):\(self.picoTCPPort))"
+                    self.activeTransportName = host == "127.0.0.1" ? "iPhone USB Direct (CoreDevice / usbmux)" : "USB CDC-NCM Ethernet (\(host):\(self.picoTCPPort))"
                     self.startNetworkReceiveLoop()
                     self.startHeartbeat()
                     self.sendPing()
+                case .waiting(let error):
+                    conn.cancel()
+                    if host == "192.168.7.1" {
+                        self.probeUsbEthernet(host: "127.0.0.1")
+                    } else {
+                        if !self.status.isConnected {
+                            self.status = .disconnected(reason: "Plug in iPhone or Raspberry Pi Pico via USB")
+                        }
+                    }
                 case .failed(let error):
                     conn.cancel()
                     if host == "192.168.7.1" {
@@ -298,7 +313,7 @@ public final class WiredConnectionManager: ObservableObject {
                         self.probeUsbEthernet(host: "127.0.0.1")
                     } else {
                         if !self.status.isConnected {
-                            self.status = .disconnected(reason: "Plug in Raspberry Pi Pico via USB")
+                            self.status = .disconnected(reason: "Plug in iPhone or Raspberry Pi Pico via USB")
                         }
                     }
                 case .cancelled:
@@ -407,6 +422,13 @@ public final class WiredConnectionManager: ObservableObject {
             }
             self.pingLatencyMs = rtt
             let version = (dict["version"] as? String) ?? "RP2040 v1.3.3"
+            
+            if let devName = dict["device_name"] as? String {
+                self.connectedDeviceName = devName
+            }
+            if let model = dict["model"] as? String {
+                self.connectedDeviceModel = model
+            }
 
             self.status = .connected(latencyMs: rtt, firmwareVersion: version, transport: self.activeTransportName)
             return
