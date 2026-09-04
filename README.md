@@ -2,8 +2,8 @@
 
 <div align="center">
 
-**Native Wired Location Simulation Firmware Interface for iOS**  
-*Physical wired connection, zero wireless reliance, turn-by-turn road routing, Gaussian micro-jitter, and hardware GPS failsafes.*
+**Native Wired Location Simulation Interface for iOS**  
+*Physical wired connection, zero wireless reliance, native Apple Maps integration, Turn-by-Turn road routing, Gaussian multi-path drift, and hardware failsafes.*
 
 [![iOS 17.0+](https://img.shields.io/badge/iOS-17.0%2B-black?logo=ios)](https://www.apple.com/ios/)
 [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange?logo=swift)](https://swift.org)
@@ -15,12 +15,22 @@
 
 ---
 
+## GitHub Repository Description
+
+> **Suggested GitHub About Description**:  
+> *Native iOS wired location simulation interface with Apple Maps integration, turn-by-turn road routing, Gaussian drift, and dual hardware bridge support (MacBook usbmuxd & Raspberry Pi Pico RP2040).*
+
+**Suggested Topics / Tags**:  
+`ios`, `swift`, `swiftui`, `mapkit`, `corelocation`, `location-simulation`, `gps-spoofing`, `raspberry-pi-pico`, `rp2040`, `usbmuxd`, `dvt`, `hardware-bridge`
+
+---
+
 ## Overview
 
-**Invis** is a native iOS location simulation interface engineered for physical iPhones and iPads. The iOS app is designed strictly as an interactive control surface for location firmware—providing sub-millisecond coordinate streaming, road-geometry route playback, and Gaussian micro-jitter over a **physical wired connection** with zero wireless or radio reliance.
+**Invis** is a native iOS location simulation interface engineered for physical iPhones and iPads. The iOS app operates strictly as an interactive control surface for location firmware—providing sub-millisecond coordinate streaming, road-geometry route playback, and Gaussian position drift over a **physical wired connection** with zero wireless or radio reliance.
 
-The system supports two operating modes:
-1. **MacBook USB-C Mode (Physical iPhone + Mac)**: Connect your physical iPhone to a MacBook via standard USB-C cable. Run `scripts/mac_bridge.py` on the Mac. The iOS app exposes an inbound listener on port 9000, and the Mac daemon connects over Apple's native `usbmuxd` USB tunnel, relaying commands to Apple's DVT `LocationSimulation` protocol. The iPhone app runs seamlessly as if connected to dedicated hardware!
+The system supports two complementary operating topologies:
+1. **MacBook USB-C Mode (Physical iPhone + Mac)**: Connect your iPhone to a MacBook via standard USB-C cable and launch `./run_bridge.sh`. The Mac daemon connects over Apple's native `usbmuxd` USB tunnel, relaying commands to Apple's DVT `LocationSimulation` protocol. The iPhone app runs seamlessly as if connected to dedicated hardware!
 2. **Standalone Hardware Dongle Mode (Raspberry Pi Pico)**: Plug your iPhone directly into a Raspberry Pi Pico (RP2040) dongle via USB-C OTG. The Pico operates as a USB CDC-NCM Ethernet gadget (`192.168.7.1:9000`) with an onboard hardware UART NMEA 0183 bridge.
 
 ---
@@ -45,38 +55,39 @@ graph TD
 
 ## Key Features
 
-- **🗺️ Native MapKit & SwiftUI Interface**:
-  - Interactive map with instant target pinning and reverse geocoding.
-  - Native iOS responsive layout: full-screen MapKit viewport with gesture-driven adaptive bottom sheet on iPhone and split sidebar on iPad.
-  - Quick landmark presets (Apple Park, Times Square, Eiffel Tower, Shibuya Crossing, and more).
+- **Native MapKit & Liquid Glass Interface**:
+  - Interactive Apple Maps canvas with Apple's real native controls (`MapUserLocationButton`, `MapCompass`, `MapPitchToggle`).
+  - Automatic physical location acquisition via CoreLocation: the app starts centered on the user's authentic device coordinates.
+  - Native sheet presentation with background interaction (`presentationBackgroundInteraction(.enabled)`), allowing simultaneous panning, pinching, and sheet navigation.
+  - Curated landmark presets (Apple Park, Times Square, Eiffel Tower, Shibuya Crossing, and more) with semantic SF Symbols and zero emojis.
 
-- **⚡ Sub-Millisecond Heartbeat & Cable Diagnostics**:
-  - Continuous ping/pong latency measurement (typically <2ms over physical USB).
-  - Visual status bar displaying live link health, firmware version, and device metadata.
+- **Sub-Millisecond Heartbeat & Link Diagnostics**:
+  - Continuous ping/pong latency telemetry (typically <1.5 ms over physical USB).
+  - Status header displaying live link health, firmware version, and connected device metadata.
 
-- **🛡️ Failsafe Anti-Rubberbanding**:
-  - If the physical USB cable is severed or disconnected mid-simulation, the firmware state machine automatically transitions to `STATE_SAFE_HOLD` within 3.5 seconds.
-  - Freezes the last active coordinates to prevent the device from abruptly rubberbanding back to real GPS.
-  - Automatically resumes normal simulation once the cable is reconnected.
+- **Failsafe Anti-Rubberbanding**:
+  - If the physical USB link is severed mid-simulation, the firmware automatically holds coordinates within 3.5 seconds.
+  - Freezes the last active coordinates to prevent the device from abruptly snapping back to real GPS.
+  - Automatically resumes normal simulation once the link is re-established.
 
-- **〰️ Realistic Gaussian Micro-Jitter**:
-  - Emulates natural atmospheric GPS drift using a Box-Muller $\mathcal{N}(0, \sigma^2)$ random walk algorithm every 2.5 seconds.
-  - Configurable drift radius (0.5m – 5.0m) to evade static location detection heuristics.
+- **Natural Position Drift (Gaussian Variance)**:
+  - Emulates authentic atmospheric GNSS multi-path drift using a Box-Muller $\mathcal{N}(0, \sigma^2)$ random walk algorithm.
+  - Configurable drift radius (0.5m – 5.0m) to reflect realistic device variance.
   - Automatically pauses drift when vehicle velocity exceeds 1.0 km/h.
 
-- **🚗 Turn-by-Turn Road Route Simulation**:
-  - Fetches real road polylines from Apple Maps (`MKDirections`) between any start and destination.
-  - Speed profiles: **Walk** (5 km/h), **Cycle** (20 km/h), **Drive** (50 km/h), and **Express** (85 km/h).
-  - Variable speed multiplier slider (0.5× to 5.0×) and corner easing.
-  - Full playback controls: Start, Pause, Resume, Stop, and Continuous Loop mode.
+- **Turn-by-Turn Road Route Simulation**:
+  - Fetches real road polylines from Apple Maps (`MKDirections`) between any origin and destination.
+  - Travel profiles: **Walk** (5 km/h), **Cycle** (20 km/h), **Drive** (50 km/h), and **Express** (85 km/h).
+  - Variable speed multiplier slider (0.5× to 4.0×) with corner easing and traffic fluctuation simulation.
+  - Transport controls: Start, Pause, Resume, Stop, and Continuous Loop playback.
 
-- **🍓 Dual Pico Dongle Firmware Options**:
-  - **C / TinyUSB**: Ultra-low latency native UF2 binary built with the Raspberry Pi Pico SDK.
+- **Dual Hardware Dongle Firmware (RP2040)**:
+  - **C / TinyUSB**: Native UF2 binary built with the Raspberry Pi Pico SDK.
   - **MicroPython**: Drop-in Python script for fast, toolchain-free deployment.
   - Real-time hardware UART NMEA emission (`$GPGGA`, `$GPRMC`) with CRC verification.
 
-- **🚨 Safety Killswitch**:
-  - One-click **"Reset to Physical GPS (Killswitch)"** action instantly stops all overrides and restores the device's authentic GPS hardware.
+- **Hardware Safety Reset**:
+  - One-tap **"Restore Hardware GPS"** action instantly clears all simulation overrides and restores authentic satellite GPS reception.
 
 ---
 
@@ -85,12 +96,14 @@ graph TD
 ```
 invis/
 ├── invis/                       # Native iOS Application (SwiftUI + MapKit)
-│   ├── ContentView.swift        # Main UI container & adaptive responsive layout
-│   ├── MapView.swift            # MapKit view with custom annotations & polylines
-│   ├── ControlsView.swift       # Coordinate inputs, presets, micro-jitter, logs
-│   ├── RoutePlannerView.swift   # Turn-by-turn routing & playback engine
-│   ├── LocationEngine.swift     # Geodesic math, timelines, Gaussian jitter
-│   ├── WiredConnectionManager.swift # Dual-mode USB wired connection manager (usbmux & NCM)
+│   ├── ContentView.swift        # Main container with native sheet & background interaction
+│   ├── MapView.swift            # Native MapKit with UserAnnotation & MapControls
+│   ├── ControlsView.swift       # Coordinate inputs, presets, position drift, telemetry
+│   ├── RoutePlannerView.swift   # Turn-by-turn road routing & playback engine
+│   ├── UserLocationManager.swift# CoreLocation manager for physical GPS initialization
+│   ├── LiquidGlass.swift        # Apple Liquid Glass design modifiers & haptics
+│   ├── LocationEngine.swift     # Geodesic math, timelines, Gaussian drift
+│   ├── WiredConnectionManager.swift # Dual-mode USB connection manager (usbmux & NCM)
 │   └── WiredStatusView.swift    # Status indicator & latency diagnostics
 ├── pico-firmware/               # Raspberry Pi Pico (RP2040) Hardware Firmware
 │   ├── main.c                   # Native C / TinyUSB firmware with failsafe watchdog
@@ -108,6 +121,8 @@ invis/
 │   ├── test_pico_micropython.py # MicroPython unit tests with mocked hardware
 │   ├── test_pico_c.c            # Native C unit tests compiled via clang
 │   └── mock_pico/               # Lightweight mock headers for Pico SDK & TinyUSB
+├── run_bridge.sh                # Automated launcher with .venv setup
+├── requirements.txt             # Python bridge dependencies
 ├── BUILD_GUIDE.md               # Detailed compilation & Xcode setup guide
 └── HARDWARE_SETUP.md            # Physical pinouts, wiring diagrams & OTG cables
 ```
@@ -147,13 +162,14 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun xcodebuild \
 When your iPhone is plugged into your MacBook via USB-C cable:
 
 1. Connect your iPhone to your Mac with a standard USB-C cable.
-2. Start the Mac USB bridge (automatically creates `.venv` and installs `requirements.txt`):
+2. Start the Mac USB bridge (automatically creates `.venv` and installs dependencies):
    ```bash
    ./run_bridge.sh
    ```
-3. Launch **Invis** on your iPhone. The top status banner will immediately show **MacBook USB Bridge** with sub-2ms ping latency.
-4. Select any location or route on your phone, click **Spoof Location**, and observe your phone's real system location update live across all apps.
-5. Click **Reset GPS** to restore physical authentic hardware GPS at any time.
+3. Launch **Invis** on your iPhone. The top status banner will show **MacBook USB Bridge** with sub-2ms ping latency.
+4. The map will prompt for location access and center on your actual physical location.
+5. Select any target or route on your phone, tap **Simulate Location**, and observe your phone's real system location update live across all apps.
+6. Tap **Restore Hardware GPS** to restore physical authentic hardware GPS at any time.
 
 ---
 
@@ -207,7 +223,7 @@ python3 scripts/test_cli.py
 ```
 
 This runs:
-1. **MicroPython Unit Tests** (`tests/test_pico_micropython.py`): Mocks RP2040 `machine.Pin`, `machine.UART`, and `time.ticks_*` to verify ping/pong, teleport, NMEA checksums, jitter, watchdog timeout, and safety killswitch.
+1. **MicroPython Unit Tests** (`tests/test_pico_micropython.py`): Validates RP2040 `machine.Pin`, `machine.UART`, ping/pong, teleport, NMEA checksums, drift, watchdog timeout, and safety killswitch.
 2. **Native C Firmware Unit Tests** (`tests/test_pico_c.c`): Compiles `pico-firmware/main.c` natively with `clang` to validate JSON parsing, coordinate precision, NMEA 0183 output, and anti-rubberbanding failsafes.
 3. **Protocol Integration Tests** (`scripts/mock_pico_dongle.py`): Validates TCP socket communication on port 9000.
 
