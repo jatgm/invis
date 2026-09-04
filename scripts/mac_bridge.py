@@ -269,6 +269,8 @@ async def device_scanner_task():
     while True:
         try:
             await phone_manager.scan_devices()
+        except asyncio.CancelledError:
+            break
         except Exception as e:
             logger.debug(f"Device scanner error: {e}")
         await asyncio.sleep(2.0)
@@ -276,17 +278,26 @@ async def device_scanner_task():
 async def usb_device_connector():
     """Continuously connects to Invis iOS App over USB usbmux when an active USB device is found."""
     while True:
-        if phone_manager.active_device is not None:
-            try:
-                mux = await usbmux.create_mux()
-                sock = await mux.connect(phone_manager.active_device, PORT)
-                reader, writer = await asyncio.open_connection(sock=sock)
-                await handle_app_client(reader, writer, source=f"USB usbmux -> {phone_manager.device_name}")
-            except Exception as e:
-                # App might not be open on phone yet or socket closed, wait and retry
-                await asyncio.sleep(2.0)
-        else:
-            await asyncio.sleep(1.5)
+        try:
+            if phone_manager.active_device is not None:
+                try:
+                    mux = await usbmux.create_mux()
+                    sock = await mux.connect(phone_manager.active_device, PORT)
+                    reader, writer = await asyncio.open_connection(sock=sock)
+                    await handle_app_client(reader, writer, source=f"USB usbmux -> {phone_manager.device_name}")
+                except (ConnectionRefusedError, usbmux.ConnectionFailedError):
+                    # App not yet open or port not yet listening on phone
+                    await asyncio.sleep(2.0)
+                except Exception as e:
+                    logger.debug(f"USB connection retry: {e}")
+                    await asyncio.sleep(2.0)
+            else:
+                await asyncio.sleep(1.5)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error(f"Unexpected error in usb_device_connector: {e}")
+            await asyncio.sleep(2.0)
 
 async def main():
     print(f"\n{BOLD}{GREEN}======================================================{RESET}")
@@ -299,10 +310,6 @@ async def main():
     # Initial scan
     await phone_manager.scan_devices()
 
-    # Start background USB tasks
-    asyncio.create_task(device_scanner_task())
-    asyncio.create_task(usb_device_connector())
-
     # Start TCP Server for Simulator fallback
     server = await asyncio.start_server(
         lambda r, w: handle_app_client(r, w, source="iOS Simulator / Localhost"),
@@ -313,8 +320,28 @@ async def main():
     print(f"{GREEN}✔ Local fallback listener active on tcp://127.0.0.1:{PORT}{RESET}")
     print(f"{YELLOW}Waiting for Invis iOS App connection...{RESET}\n")
 
+    # Retain strong references in asyncio.gather so Python GC never destroys running tasks
+    scanner_task = asyncio.create_task(device_scanner_task(), name="device_scanner")
+    usb_task = asyncio.create_task(usb_device_connector(), name="usb_connector")
+
     async with server:
-        await server.serve_forever()
+        try:
+            await asyncio.gather(
+                server.serve_forever(),
+                scanner_task,
+                usb_task
+            )
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            pass
+        finally:
+            scanner_task.cancel()
+            usb_task.cancel()
+            await asyncio.gather(scanner_task, usb_task, return_exceptions=True)
+            await phone_manager.close_session()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print(f"\n{YELLOW}Bridge daemon stopped.{RESET}")
+        sys.exit(0)
