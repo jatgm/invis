@@ -42,19 +42,6 @@ public struct ContentView: View {
             // Persistent Top Wired Status Bar
             WiredStatusView()
 
-            #if os(macOS)
-            // macOS Layout: NavigationSplitView
-            NavigationSplitView {
-                sidebarContent
-                    .navigationSplitViewColumnWidth(min: 340, ideal: 380, max: 460)
-            } detail: {
-                MapView(
-                    targetCoordinate: $targetCoordinate,
-                    targetAltitude: $targetAltitude,
-                    routeCoordinates: routeCoordinates
-                )
-            }
-            #else
             // iOS Layout: Overlay bottom sheet or adaptive layout
             GeometryReader { geo in
                 if geo.size.width > 700 {
@@ -69,7 +56,8 @@ public struct ContentView: View {
                         MapView(
                             targetCoordinate: $targetCoordinate,
                             targetAltitude: $targetAltitude,
-                            routeCoordinates: routeCoordinates
+                            routeCoordinates: routeCoordinates,
+                            showBottomInfoBar: true
                         )
                     }
                 } else {
@@ -78,7 +66,8 @@ public struct ContentView: View {
                         MapView(
                             targetCoordinate: $targetCoordinate,
                             targetAltitude: $targetAltitude,
-                            routeCoordinates: routeCoordinates
+                            routeCoordinates: routeCoordinates,
+                            showBottomInfoBar: false
                         )
 
                         // Collapsible Bottom Card for iPhone
@@ -86,29 +75,9 @@ public struct ContentView: View {
                     }
                 }
             }
-            #endif
+            .ignoresSafeArea(edges: .bottom)
         }
-        #if os(macOS)
-        .frame(minWidth: 950, minHeight: 650)
-        .toolbar {
-            ToolbarItemGroup(placement: .automatic) {
-                Button {
-                    connectionManager.startHardwareDiscovery()
-                } label: {
-                    Label("Detect Pico", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .help("Scan for Raspberry Pi Pico over physical USB")
-
-                Button(role: .destructive) {
-                    connectionManager.resetLocation()
-                } label: {
-                    Label("Reset GPS", systemImage: "arrow.counterclockwise.circle.fill")
-                        .foregroundColor(.red)
-                }
-                .help("Safety Reset: Restores physical GPS")
-            }
-        }
-        #endif
+        .ignoresSafeArea(edges: .bottom)
     }
 
     // MARK: - Sidebar Content
@@ -146,49 +115,68 @@ public struct ContentView: View {
         }
     }
 
-    #if os(iOS)
-    @State private var isSheetExpanded: Bool = false
+    public enum SheetDetent: Equatable {
+        case minimized
+        case medium
+        case expanded
+    }
+
+    @State private var sheetDetent: SheetDetent = .minimized
 
     private func iPhoneControlSheet(geo: GeometryProxy) -> some View {
-        let collapsedHeight: CGFloat = 290
-        let expandedHeight: CGFloat = min(geo.size.height * 0.75, 580)
-        let currentHeight = isSheetExpanded ? expandedHeight : collapsedHeight
+        let bottomSafeInset = max(geo.safeAreaInsets.bottom, 16)
+        let mediumHeight: CGFloat = 310
+        let expandedHeight: CGFloat = min(geo.size.height * 0.78, 580)
+
+        let contentMaxHeight: CGFloat
+        switch sheetDetent {
+        case .minimized:
+            contentMaxHeight = 0
+        case .medium:
+            contentMaxHeight = mediumHeight
+        case .expanded:
+            contentMaxHeight = expandedHeight
+        }
 
         return VStack(spacing: 0) {
-            // Drag handle area with tap & swipe gesture
-            VStack(spacing: 0) {
-                Capsule()
-                    .fill(Color.secondary.opacity(0.4))
-                    .frame(width: 36, height: 5)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
-            }
-            .frame(maxWidth: .infinity)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    isSheetExpanded.toggle()
+            if sheetDetent == .minimized {
+                // Compact Peek State: Handle + slim info & spoof action bar
+                VStack(spacing: 6) {
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.4))
+                        .frame(width: 36, height: 5)
+                        .padding(.top, 8)
+
+                    minimizedPeekBar
                 }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 12)
-                    .onEnded { value in
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            if value.translation.height < -25 {
-                                isSheetExpanded = true
-                            } else if value.translation.height > 25 {
-                                isSheetExpanded = false
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        sheetDetent = .medium
+                    }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 10)
+                        .onEnded { value in
+                            if value.translation.height < -20 {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                    sheetDetent = .medium
+                                }
                             }
                         }
-                    }
-            )
+                )
+            } else {
+                // Header Bar with Drag Handle & Collapse Controls
+                sheetHeaderBar
 
-            sidebarContent
-                .frame(maxHeight: currentHeight)
+                sidebarContent
+                    .frame(maxHeight: contentMaxHeight)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
 
             // Bottom safe area spacing so buttons sit cleanly above home indicator
             Spacer(minLength: 0)
-                .frame(height: max(geo.safeAreaInsets.bottom, 16))
+                .frame(height: bottomSafeInset)
         }
         .frame(maxWidth: .infinity)
         .background(
@@ -208,7 +196,161 @@ public struct ContentView: View {
         .shadow(color: Color.black.opacity(0.28), radius: 12, x: 0, y: -4)
         .ignoresSafeArea(edges: .bottom)
     }
-    #endif
+
+    // MARK: - iPhone Header Bar (Medium / Expanded)
+    private var sheetHeaderBar: some View {
+        HStack(spacing: 8) {
+            // Mode Title & Icon
+            HStack(spacing: 6) {
+                Image(systemName: selectedTab.iconName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.blue)
+                Text(selectedTab.rawValue)
+                    .font(.system(size: 13, weight: .bold))
+            }
+
+            Spacer()
+
+            // Drag handle capsule in the center
+            Capsule()
+                .fill(Color.secondary.opacity(0.4))
+                .frame(width: 36, height: 5)
+
+            Spacer()
+
+            // Expand / Minimize Buttons
+            HStack(spacing: 8) {
+                if sheetDetent == .medium {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            sheetDetent = .expanded
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Expand Full")
+                }
+
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        sheetDetent = .minimized
+                    }
+                } label: {
+                    Image(systemName: "chevron.down.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Minimize Controls")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                switch sheetDetent {
+                case .minimized:
+                    sheetDetent = .medium
+                case .medium:
+                    sheetDetent = .minimized
+                case .expanded:
+                    sheetDetent = .medium
+                }
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 10)
+                .onEnded { value in
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                        if value.translation.height < -25 {
+                            switch sheetDetent {
+                            case .minimized:
+                                sheetDetent = .medium
+                            case .medium:
+                                sheetDetent = .expanded
+                            case .expanded:
+                                break
+                            }
+                        } else if value.translation.height > 25 {
+                            switch sheetDetent {
+                            case .expanded:
+                                sheetDetent = .medium
+                            case .medium:
+                                sheetDetent = .minimized
+                            case .minimized:
+                                break
+                            }
+                        }
+                    }
+                }
+        )
+    }
+
+    // MARK: - iPhone Minimized Peek Bar
+    private var minimizedPeekBar: some View {
+        HStack(spacing: 12) {
+            // Mode & Coordinate summary
+            HStack(spacing: 8) {
+                Image(systemName: selectedTab.iconName)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.blue)
+                    .frame(width: 28, height: 28)
+                    .background(Color.blue.opacity(0.12))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(selectedTab.rawValue)
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.primary)
+
+                    Text(String(format: "%.4f°, %.4f°", targetCoordinate.latitude, targetCoordinate.longitude))
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            // Quick Spoof Trigger
+            Button {
+                connectionManager.teleport(to: targetCoordinate, altitude: targetAltitude)
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: connectionManager.isSpoofingActive ? "checkmark.circle.fill" : "bolt.fill")
+                        .font(.system(size: 11, weight: .bold))
+                    Text(connectionManager.isSpoofingActive ? "Spoofing" : "Spoof")
+                        .font(.system(size: 11, weight: .bold))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(connectionManager.isSpoofingActive ? .green : .blue)
+            .controlSize(.small)
+            .disabled(!connectionManager.status.isConnected)
+
+            // Expand Chevron
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                    sheetDetent = .medium
+                }
+            } label: {
+                Image(systemName: "chevron.up.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Expand Controls")
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+    }
 }
 
 #Preview {

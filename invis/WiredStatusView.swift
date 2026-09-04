@@ -125,11 +125,14 @@ public struct WiredStatusView: View {
 
     private var statusIconName: String {
         switch connectionManager.status {
-        case .connected:
-            if connectionManager.connectedDeviceName != nil {
-                return "iphone.gen3"
+        case .connected(_, _, let transport):
+            if transport.contains("Mac") {
+                return "laptopcomputer"
+            } else if transport.contains("Simulator") {
+                return "desktopcomputer"
+            } else {
+                return "cpu"
             }
-            return "cable.connector.horizontal"
         case .connecting:
             return "antenna.radiowaves.left.and.right"
         case .disconnected:
@@ -139,15 +142,18 @@ public struct WiredStatusView: View {
 
     private var statusHeadline: String {
         switch connectionManager.status {
-        case .connected:
-            if let devName = connectionManager.connectedDeviceName {
-                return "\(devName) Connected"
+        case .connected(_, _, let transport):
+            if transport.contains("Mac") {
+                return "MacBook USB Bridge"
+            } else if transport.contains("Simulator") {
+                return "Simulator Mock Dongle"
+            } else {
+                return "Pico Hardware Dongle"
             }
-            return "Pico Dongle Connected"
         case .connecting:
-            return "Establishing Link..."
+            return "Establishing Wired Link..."
         case .disconnected:
-            return "No Device Detected"
+            return "Hardware Disconnected"
         }
     }
 
@@ -155,9 +161,9 @@ public struct WiredStatusView: View {
         switch connectionManager.status {
         case .connected(_, _, let transport):
             if let model = connectionManager.connectedDeviceModel {
-                return "\(model) • Wired USB Link Ready"
+                return "\(model) • \(transport)"
             }
-            return "Active link: \(transport)"
+            return "Active Wired Link: \(transport)"
         case .connecting(let detail):
             return detail
         case .disconnected(let reason):

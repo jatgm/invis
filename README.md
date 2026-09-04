@@ -2,13 +2,13 @@
 
 <div align="center">
 
-**Native Hardware & USB Location Simulation Suite for iOS & macOS**  
+**Native Wired Location Simulation Firmware Interface for iOS**  
 *Physical wired connection, zero wireless reliance, turn-by-turn road routing, Gaussian micro-jitter, and hardware GPS failsafes.*
 
-[![macOS 14.0+](https://img.shields.io/badge/macOS-14.0%2B-blue?logo=apple)](https://www.apple.com/macos/)
 [![iOS 17.0+](https://img.shields.io/badge/iOS-17.0%2B-black?logo=ios)](https://www.apple.com/ios/)
 [![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange?logo=swift)](https://swift.org)
 [![Raspberry Pi Pico](https://img.shields.io/badge/RP2040-Pico%20%2F%20Pico%20W-crimson?logo=raspberrypi)](https://www.raspberrypi.com/products/raspberry-pi-pico/)
+[![Mac Bridge](https://img.shields.io/badge/Mac%20Bridge-usbmuxd-blue?logo=apple)](scripts/mac_bridge.py)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 </div>
@@ -17,11 +17,11 @@
 
 ## Overview
 
-**Invis** is a location simulation and testing platform engineered for Apple devices (macOS and physical iPhones/iPads). It provides sub-millisecond coordinate streaming, natural GPS drift emulation, and road-geometry route playback over a **strictly physical wired connection** with zero reliance on Bluetooth, Wi-Fi, or radio broadcasts.
+**Invis** is a native iOS location simulation interface engineered for physical iPhones and iPads. The iOS app is designed strictly as an interactive control surface for location firmware—providing sub-millisecond coordinate streaming, road-geometry route playback, and Gaussian micro-jitter over a **physical wired connection** with zero wireless or radio reliance.
 
 The system supports two operating modes:
-1. **Host-to-Device Mode (Mac + Physical iPhone)**: Connect your physical iPhone to a Mac via USB. The host app leverages Apple's native CoreDevice / DVT `LocationSimulation` protocol over a persistent Remote Service Discovery (RSD) tunnel with **zero jailbreak required**.
-2. **Standalone Hardware Dongle Mode (Raspberry Pi Pico)**: Flash the included RP2040 firmware (C/TinyUSB or MicroPython). The Pico acts as a dedicated USB location dongle (CDC-ACM virtual serial on macOS or CDC-NCM Ethernet gadget on iOS via OTG) with an onboard hardware UART NMEA 0183 bridge.
+1. **MacBook USB-C Mode (Physical iPhone + Mac)**: Connect your physical iPhone to a MacBook via standard USB-C cable. Run `scripts/mac_bridge.py` on the Mac. The iOS app exposes an inbound listener on port 9000, and the Mac daemon connects over Apple's native `usbmuxd` USB tunnel, relaying commands to Apple's DVT `LocationSimulation` protocol. The iPhone app runs seamlessly as if connected to dedicated hardware!
+2. **Standalone Hardware Dongle Mode (Raspberry Pi Pico)**: Plug your iPhone directly into a Raspberry Pi Pico (RP2040) dongle via USB-C OTG. The Pico operates as a USB CDC-NCM Ethernet gadget (`192.168.7.1:9000`) with an onboard hardware UART NMEA 0183 bridge.
 
 ---
 
@@ -29,15 +29,14 @@ The system supports two operating modes:
 
 ```mermaid
 graph TD
-    subgraph "Mode 1: Physical iPhone via Mac USB"
-        MacApp[Invis macOS Desktop App] -->|TCP 127.0.0.1:9000| Bridge[device_bridge.py Daemon]
-        Bridge -->|usbmuxd / RSD Tunnel| DVT[DVT LocationSimulation Service]
-        DVT -->|Physical USB Cable| iPhone[Physical iPhone / iPad]
+    subgraph "Mode 1: iPhone Connected to MacBook via USB-C"
+        iPhoneApp1[Invis iOS App on iPhone] <-->|Physical USB-C / usbmuxd :9000| MacBridge[Mac USB Bridge Daemon mac_bridge.py]
+        MacBridge -->|Apple DVT LocationSimulation| DVT[CoreDevice RSD Tunnel]
+        DVT -->|System Location Injection| iPhoneGPS1[iPhone CoreLocation System]
     end
 
     subgraph "Mode 2: Standalone Pico Hardware Dongle"
-        Pico[Raspberry Pi Pico RP2040] -->|USB OTG / NCM| iPhoneDirect[iPhone via Lightning/USB-C OTG]
-        Pico -->|USB CDC-ACM /dev/cu.usbmodem*| MacHost[Mac Desktop]
+        iPhoneApp2[Invis iOS App on iPhone] <-->|Physical USB-C OTG / CDC-NCM :9000| Pico[Raspberry Pi Pico RP2040]
         Pico -->|UART0 GP0 TX 9600 Baud| NMEA[External GNSS / NMEA 0183 Receiver]
     end
 ```
@@ -48,7 +47,7 @@ graph TD
 
 - **🗺️ Native MapKit & SwiftUI Interface**:
   - Interactive map with instant target pinning and reverse geocoding.
-  - Multiplatform responsive layout: desktop sidebar on macOS, adaptive continuous bottom sheet on iPhone.
+  - Native iOS responsive layout: full-screen MapKit viewport with gesture-driven adaptive bottom sheet on iPhone and split sidebar on iPad.
   - Quick landmark presets (Apple Park, Times Square, Eiffel Tower, Shibuya Crossing, and more).
 
 - **⚡ Sub-Millisecond Heartbeat & Cable Diagnostics**:
@@ -85,13 +84,13 @@ graph TD
 
 ```
 invis/
-├── invis/                       # Native Apple Multiplatform App (SwiftUI + MapKit)
+├── invis/                       # Native iOS Application (SwiftUI + MapKit)
 │   ├── ContentView.swift        # Main UI container & adaptive responsive layout
 │   ├── MapView.swift            # MapKit view with custom annotations & polylines
 │   ├── ControlsView.swift       # Coordinate inputs, presets, micro-jitter, logs
 │   ├── RoutePlannerView.swift   # Turn-by-turn routing & playback engine
 │   ├── LocationEngine.swift     # Geodesic math, timelines, Gaussian jitter
-│   ├── WiredConnectionManager.swift # Serial & link-local network transport
+│   ├── WiredConnectionManager.swift # Dual-mode USB wired connection manager (usbmux & NCM)
 │   └── WiredStatusView.swift    # Status indicator & latency diagnostics
 ├── pico-firmware/               # Raspberry Pi Pico (RP2040) Hardware Firmware
 │   ├── main.c                   # Native C / TinyUSB firmware with failsafe watchdog
@@ -101,8 +100,9 @@ invis/
 │   └── micropython/
 │       └── main.py              # Pure MicroPython firmware implementation
 ├── scripts/
-│   ├── device_bridge.py         # macOS CoreDevice/DVT bridge for physical iPhones
-│   ├── mock_pico_dongle.py      # Hardware emulator for macOS desktop testing
+│   ├── mac_bridge.py            # Universal Mac USB bridge for physical iPhone (usbmuxd)
+│   ├── device_bridge.py         # Backward-compatibility alias for mac_bridge.py
+│   ├── mock_pico_dongle.py      # Hardware emulator for local testing
 │   └── test_cli.py              # Master test runner
 ├── tests/                       # Automated Firmware & Logic Test Suites
 │   ├── test_pico_micropython.py # MicroPython unit tests with mocked hardware
@@ -115,12 +115,12 @@ invis/
 ---
 
 ## Quick Start
-
-### 1. Build & Run the Invis App (macOS or iOS)
+ 
+### 1. Build & Run the Invis iOS App
 
 #### Prerequisites
 - macOS 14.0+ with Xcode 15+ / 16+
-- Command Line Tools installed (`xcode-select --install`)
+- Physical iPhone (iOS 17.0+) or iOS Simulator
 
 #### Clone & Open
 ```bash
@@ -131,33 +131,34 @@ open invis.xcodeproj
 
 #### Build from Terminal
 ```bash
-# macOS Desktop App
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun xcodebuild \
-  -scheme invis -destination 'generic/platform=macOS' build
-
-# iOS Simulator
+# Build for iOS Simulator
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun xcodebuild \
   -scheme invis -destination 'generic/platform=iOS Simulator' build
+
+# Build for Physical iPhone
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun xcodebuild \
+  -scheme invis -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
 ---
 
-### 2. Physical iPhone USB Simulation (iOS 17+)
+### 2. MacBook USB-C Cable Mode (iPhone Connected to Mac)
 
-Simulate location on a physical iPhone connected to your Mac over USB without third-party drivers or jailbreak:
+When your iPhone is plugged into your MacBook via USB-C cable:
 
-1. Connect your iPhone to your Mac with a standard USB-C or Lightning cable.
-2. Ensure Python 3.9+ is available, set up a virtual environment, and install `pymobiledevice3`:
+1. Connect your iPhone to your Mac with a standard USB-C cable.
+2. Set up the Python virtual environment (if not already done):
    ```bash
    python3 -m venv .venv
    .venv/bin/pip install pymobiledevice3
    ```
-3. Start the USB bridge:
+3. Start the Mac USB bridge daemon:
    ```bash
-   .venv/bin/python3 scripts/device_bridge.py
+   .venv/bin/python3 scripts/mac_bridge.py
    ```
-4. Launch **Invis.app** on macOS. The status banner will confirm connection to your iPhone.
-5. Select a location or route, click **Spoof Location**, and view the updated position live in Apple Maps / Find My on your phone.
+4. Launch **Invis** on your iPhone. The top status banner will immediately show **MacBook USB Bridge** with sub-2ms ping latency.
+5. Select any location or route on your phone, click **Spoof Location**, and observe your phone's real system location update live across all apps.
+6. Click **Reset GPS** to restore physical authentic hardware GPS at any time.
 
 ---
 

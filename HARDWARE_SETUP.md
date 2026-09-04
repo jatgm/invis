@@ -41,30 +41,31 @@ Because iOS restricts raw USB-serial (CDC-ACM) without an Apple MFi authenticati
 
 ---
 
-## 2. Setup B: Mac Host Connection (macOS)
+## 2. Setup B: iPhone Connected to MacBook via USB-C Cable (Host Emulation Mode)
 
-Under macOS, the Pico operates as a standard **USB CDC-ACM (Virtual COM / Serial Port)**, requiring zero kernel extensions or third-party drivers.
+When the physical iPhone running the Invis iOS app is connected to a MacBook via standard USB-C cable, it functions identically to being connected to a physical Pico dongle:
 
 ```
 ┌─────────────────────────┐
-│     Mac (macOS App)     │
-│   Swift /dev/cu.usbmodem│
+│     iPhone (iOS App)    │
+│   NWListener Port 9000  │
 └────────────┬────────────┘
              │
-      [USB-A or USB-C]
+      [USB-C Cable]
              │
              ▼
 ┌─────────────────────────┐
-│   Raspberry Pi Pico     │
-│   TinyUSB CDC-ACM       │
-│  115200 8N1 JSON Stream │
+│       MacBook Host      │
+│  mac_bridge.py (usbmux) │
+│ Apple DVT LocationSim   │
 └─────────────────────────┘
 ```
 
-### Cable Requirements:
-- Standard **USB-C to Micro-USB** or **USB-A to Micro-USB data cable** (ensure the cable has 4 physical wires for D+, D-, VBUS, GND, and is not a charge-only cable).
-- Plugs into any Mac USB port or Thunderbolt hub.
-- Discovered automatically by `Invis` under `/dev/cu.usbmodem*`.
+### Connection Characteristics:
+- Standard **USB-C to USB-C data cable** (or Lightning to USB-C cable).
+- Plugs into any MacBook Thunderbolt / USB-C port.
+- No Wi-Fi or personal hotspot required: Apple's native `usbmuxd` tunnels communication through the physical USB cable directly into the iOS app's port 9000.
+- `scripts/mac_bridge.py` receives the exact same JSON commands as the Pico (`teleport`, `route`, `jitter`, `reset`) and applies them to the iPhone via Apple DVT `LocationSimulation`.
 
 ---
 

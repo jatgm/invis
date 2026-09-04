@@ -67,6 +67,7 @@ public struct MapView: View {
     @Binding public var targetCoordinate: CLLocationCoordinate2D
     @Binding public var targetAltitude: Double
     public var routeCoordinates: [CLLocationCoordinate2D]
+    public var showBottomInfoBar: Bool
 
     @ObservedObject var connectionManager: WiredConnectionManager = .shared
     @StateObject private var searchCompleter = MapSearchCompleter()
@@ -87,11 +88,13 @@ public struct MapView: View {
     public init(
         targetCoordinate: Binding<CLLocationCoordinate2D>,
         targetAltitude: Binding<Double> = .constant(15.0),
-        routeCoordinates: [CLLocationCoordinate2D] = []
+        routeCoordinates: [CLLocationCoordinate2D] = [],
+        showBottomInfoBar: Bool = true
     ) {
         self._targetCoordinate = targetCoordinate
         self._targetAltitude = targetAltitude
         self.routeCoordinates = routeCoordinates
+        self.showBottomInfoBar = showBottomInfoBar
     }
 
     public var body: some View {
@@ -243,62 +246,64 @@ public struct MapView: View {
 
                 Spacer()
 
-                // Floating Bottom Info Bar (Coordinates & Altitude Readouts)
-                HStack(spacing: 16) {
-                    HStack(spacing: 6) {
-                        Text("LAT:")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        Text(String(format: "%.6f°", targetCoordinate.latitude))
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    }
-
-                    Divider()
-                        .frame(height: 12)
-
-                    HStack(spacing: 6) {
-                        Text("LON:")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        Text(String(format: "%.6f°", targetCoordinate.longitude))
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    }
-
-                    Divider()
-                        .frame(height: 12)
-
-                    HStack(spacing: 6) {
-                        Text("ALT:")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.secondary)
-                        Text(String(format: "%.1f m", targetAltitude))
-                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    }
-
-                    Spacer()
-
-                    // Quick Teleport Trigger on Pin
-                    Button {
-                        connectionManager.teleport(to: targetCoordinate, altitude: targetAltitude)
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "bolt.fill")
-                            Text("Spoof Here")
+                if showBottomInfoBar {
+                    // Floating Bottom Info Bar (Coordinates & Altitude Readouts)
+                    HStack(spacing: 16) {
+                        HStack(spacing: 6) {
+                            Text("LAT:")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                            Text(String(format: "%.6f°", targetCoordinate.latitude))
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         }
-                        .font(.system(size: 11, weight: .bold))
+
+                        Divider()
+                            .frame(height: 12)
+
+                        HStack(spacing: 6) {
+                            Text("LON:")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                            Text(String(format: "%.6f°", targetCoordinate.longitude))
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        }
+
+                        Divider()
+                            .frame(height: 12)
+
+                        HStack(spacing: 6) {
+                            Text("ALT:")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .foregroundColor(.secondary)
+                            Text(String(format: "%.1f m", targetAltitude))
+                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        }
+
+                        Spacer()
+
+                        // Quick Teleport Trigger on Pin
+                        Button {
+                            connectionManager.teleport(to: targetCoordinate, altitude: targetAltitude)
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "bolt.fill")
+                                Text("Spoof Here")
+                            }
+                            .font(.system(size: 11, weight: .bold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.blue)
+                        .controlSize(.small)
+                        .disabled(!connectionManager.status.isConnected)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.blue)
-                    .controlSize(.small)
-                    .disabled(!connectionManager.status.isConnected)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Capsule())
+                    .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 2)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
-                .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 2)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
             }
         }
         .onAppear {

@@ -13,10 +13,5 @@ struct invisApp: App {
         WindowGroup {
             ContentView()
         }
-        #if os(macOS)
-        .windowStyle(.titleBar)
-        .windowToolbarStyle(.unified(showsTitle: true))
-        .defaultSize(width: 1100, height: 750)
-        #endif
     }
 }

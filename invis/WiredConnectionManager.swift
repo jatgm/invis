@@ -2,20 +2,17 @@
 //  WiredConnectionManager.swift
 //  invis
 //
-//  Wired Physical Connection Manager for Raspberry Pi Pico Dongle.
+//  Wired Physical Connection Manager for iOS.
 //  Strictly communicates over physical wired USB:
-//  - macOS: Direct USB CDC-ACM Virtual Serial (/dev/cu.usbmodem*) via POSIX termios
-//  - iOS: USB CDC-NCM Ethernet-over-USB via Link-Local TCP/HTTP (192.168.7.1)
+//  - MacBook USB-C Cable: Inbound NWListener on port 9000 accepts usbmuxd tunnel from Mac bridge
+//  - Raspberry Pi Pico: Outbound NWConnection to 192.168.7.1:9000 over USB CDC-NCM Ethernet
+//  - iOS Simulator: Outbound fallback to 127.0.0.1:9000
 //
 
 import Foundation
 import CoreLocation
 import Combine
 import Network
-
-#if os(macOS)
-import Darwin
-#endif
 
 // MARK: - Connection Status Enum
 public enum ConnectionStatus: Equatable, Sendable {
@@ -31,8 +28,8 @@ public enum ConnectionStatus: Equatable, Sendable {
     public var statusTitle: String {
         switch self {
         case .disconnected: return "Hardware Disconnected"
-        case .connecting: return "Connecting to Pico..."
-        case .connected: return "Pico Dongle Connected"
+        case .connecting: return "Connecting to Firmware..."
+        case .connected: return "Firmware Connected"
         }
     }
 }
@@ -40,8 +37,8 @@ public enum ConnectionStatus: Equatable, Sendable {
 // MARK: - Transport Mode
 public enum TransportMode: String, CaseIterable, Sendable {
     case auto = "Auto Detect"
-    case usbSerial = "USB Serial (CDC-ACM)"
-    case usbEthernet = "USB Ethernet (CDC-NCM)"
+    case macUsb = "MacBook USB-C (usbmux)"
+    case picoEthernet = "Pico USB OTG (CDC-NCM)"
 }
 
 // MARK: - Log Entry
@@ -98,23 +95,16 @@ public final class WiredConnectionManager: ObservableObject {
     private var currentRouteStepIndex: Int = 0
     private var isLoopingRoute: Bool = false
 
-    // Network transport (iOS / NCM)
-    private var nwConnection: NWConnection?
+    // Active Network transport
+    private var activeConnection: NWConnection?
+    private var nwListener: NWListener?
+    private let listenerPort: UInt16 = 9000
     private let picoIP = "192.168.7.1"
-    private let picoTCPPort: UInt16 = 9000
-    private let picoHTTPPort: UInt16 = 8080
-
-    #if os(macOS)
-    // POSIX Serial transport (macOS / CDC-ACM)
-    private var serialFileDescriptor: Int32 = -1
-    private var activePortPath: String?
-    private let serialReadQueue = DispatchQueue(label: "com.invis.serialReadQueue", qos: .userInitiated)
-    private nonisolated(unsafe) var isReadingSerial = false
-    #endif
+    private let networkQueue = DispatchQueue(label: "com.invis.networkQueue", qos: .userInitiated)
 
     public init() {
         startHardwareDiscovery()
-        log(tag: "INFO", message: "Invis Location Engine Initialized. Ready for wired USB connection.")
+        log(tag: "INFO", message: "Invis iOS Firmware Interface Initialized. Listening on port \(listenerPort).")
     }
 
     deinit {
@@ -136,8 +126,10 @@ public final class WiredConnectionManager: ObservableObject {
 
     // MARK: - Hardware Discovery & Auto-Connect
     public func startHardwareDiscovery() {
+        setupInboundUSBListener()
+
         portWatcherTimer?.invalidate()
-        portWatcherTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+        portWatcherTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.pollHardwareStatus()
             }
@@ -145,145 +137,67 @@ public final class WiredConnectionManager: ObservableObject {
         pollHardwareStatus()
     }
 
+    // MARK: - Inbound USB-C Listener (for MacBook usbmuxd tunnel)
+    private func setupInboundUSBListener() {
+        if nwListener != nil { return }
+
+        do {
+            let params = NWParameters.tcp
+            params.allowLocalEndpointReuse = true
+            guard let port = NWEndpoint.Port(rawValue: listenerPort) else { return }
+            let listener = try NWListener(using: params, on: port)
+
+            listener.stateUpdateHandler = { [weak self] state in
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    switch state {
+                    case .ready:
+                        self.log(tag: "INFO", message: "USB listener ready on port \(self.listenerPort) (ready for Mac bridge).")
+                    case .failed(let error):
+                        self.log(tag: "WARN", message: "USB listener failed: \(error.localizedDescription)")
+                    default:
+                        break
+                    }
+                }
+            }
+
+            listener.newConnectionHandler = { [weak self] newConnection in
+                Task { @MainActor [weak self] in
+                    guard let self = self else { return }
+                    self.log(tag: "INFO", message: "Incoming connection received on port \(self.listenerPort)!")
+                    self.bindConnection(newConnection, transportName: "MacBook USB-C (usbmux)")
+                }
+            }
+
+            listener.start(queue: networkQueue)
+            self.nwListener = listener
+        } catch {
+            log(tag: "ERR", message: "Failed to create USB listener on port \(listenerPort): \(error.localizedDescription)")
+        }
+    }
+
     private func pollHardwareStatus() {
         if status.isConnected { return }
 
-        #if os(macOS)
-        if transportMode == .auto || transportMode == .usbSerial {
-            if let port = scanForPicoSerialPort() {
-                connectSerial(portPath: port)
-                return
-            }
+        // Probe Pico USB-NCM Ethernet gadget (192.168.7.1)
+        if transportMode == .auto || transportMode == .picoEthernet {
+            probeOutboundEndpoint(host: picoIP, port: listenerPort, transportName: "Pico Dongle (USB-NCM)")
         }
-        #endif
 
-        #if os(macOS)
-        probeUsbEthernet(host: "127.0.0.1")
-        #else
-        if transportMode == .auto || transportMode == .usbEthernet {
-            probeUsbEthernet(host: "192.168.7.1")
+        #if targetEnvironment(simulator)
+        // In simulator, probe local MacBook host
+        if transportMode == .auto {
+            probeOutboundEndpoint(host: "127.0.0.1", port: listenerPort, transportName: "Simulator Mock Dongle")
         }
         #endif
     }
 
-    // MARK: - macOS POSIX Serial Implementation (CDC-ACM)
-    #if os(macOS)
-    private func scanForPicoSerialPort() -> String? {
-        let fileManager = FileManager.default
-        do {
-            let files = try fileManager.contentsOfDirectory(atPath: "/dev")
-            // Raspberry Pi Pico USB CDC-ACM presents as /dev/cu.usbmodem*
-            let modemPorts = files.filter { $0.hasPrefix("cu.usbmodem") || $0.hasPrefix("cu.usbserial") }
-            if let first = modemPorts.first {
-                return "/dev/" + first
-            }
-        } catch {
-            log(tag: "ERR", message: "Failed to scan /dev: \(error.localizedDescription)")
-        }
-        return nil
-    }
+    // MARK: - Outbound Prober (for Pico Dongle & Simulator)
+    private func probeOutboundEndpoint(host: String, port: UInt16, transportName: String) {
+        guard !status.isConnected, activeConnection == nil else { return }
 
-    public func connectSerial(portPath: String) {
-        closeSerial()
-        status = .connecting(detail: "Opening \(portPath)...")
-        log(tag: "INFO", message: "Connecting to USB CDC-ACM device at \(portPath)")
-
-        let fd = open(portPath, O_RDWR | O_NOCTTY | O_NONBLOCK)
-        guard fd >= 0 else {
-            status = .disconnected(reason: "Failed to open \(portPath)")
-            log(tag: "ERR", message: "POSIX open() error \(errno): \(String(cString: strerror(errno)))")
-            return
-        }
-
-        // Configure termios for 115200 8N1 raw mode
-        var tty = termios()
-        if tcgetattr(fd, &tty) != 0 {
-            close(fd)
-            status = .disconnected(reason: "tcgetattr failed")
-            log(tag: "ERR", message: "tcgetattr error \(errno)")
-            return
-        }
-
-        cfsetispeed(&tty, speed_t(B115200))
-        cfsetospeed(&tty, speed_t(B115200))
-
-        // 8-bit chars, disable parity, 1 stop bit
-        tty.c_cflag = (tty.c_cflag & ~tcflag_t(PARENB | CSTOPB | CSIZE)) | tcflag_t(CS8 | CLOCAL | CREAD)
-        tty.c_iflag = 0
-        tty.c_oflag = 0
-        tty.c_lflag = 0
-
-        // Non-blocking reads
-        tty.c_cc.16 = 0 // VMIN
-        tty.c_cc.17 = 1 // VTIME (0.1s timeout)
-
-        if tcsetattr(fd, TCSANOW, &tty) != 0 {
-            close(fd)
-            status = .disconnected(reason: "tcsetattr failed")
-            log(tag: "ERR", message: "tcsetattr error \(errno)")
-            return
-        }
-
-        self.serialFileDescriptor = fd
-        self.activePortPath = portPath
-        self.activeTransportName = "USB CDC-ACM (\(portPath))"
-
-        startSerialReadLoop()
-        startHeartbeat()
-        sendPing()
-    }
-
-    private func closeSerial() {
-        isReadingSerial = false
-        if serialFileDescriptor >= 0 {
-            close(serialFileDescriptor)
-            serialFileDescriptor = -1
-        }
-        activePortPath = nil
-    }
-
-    private func startSerialReadLoop() {
-        guard serialFileDescriptor >= 0 else { return }
-        isReadingSerial = true
-        let fd = self.serialFileDescriptor
-
-        serialReadQueue.async { [weak self] in
-            var buffer = [UInt8](repeating: 0, count: 1024)
-            var lineAccumulator = Data()
-
-            while let self = self, self.isReadingSerial {
-                let bytesRead = read(fd, &buffer, buffer.count)
-                if bytesRead > 0 {
-                    let chunk = Data(buffer[0..<bytesRead])
-                    lineAccumulator.append(chunk)
-
-                    // Extract newline delimited lines
-                    while let newlineIndex = lineAccumulator.firstIndex(of: 0x0A) {
-                        let lineData = lineAccumulator.subdata(in: 0..<newlineIndex)
-                        lineAccumulator.removeSubrange(0...newlineIndex)
-
-                        if let lineString = String(data: lineData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !lineString.isEmpty {
-                            Task { @MainActor in
-                                self.handleIncomingPacket(lineString)
-                            }
-                        }
-                    }
-                } else if bytesRead < 0 && errno != EAGAIN {
-                    // Cable was disconnected
-                    Task { @MainActor in
-                        self.handleCableDisconnect(reason: "Physical USB connection severed")
-                    }
-                    break
-                }
-                usleep(20_000) // 20ms poll
-            }
-        }
-    }
-    #endif
-
-    // MARK: - iOS & Network Transport Implementation (CDC-NCM / Local Emulator)
-    private func probeUsbEthernet(host: String = "192.168.7.1") {
-        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: picoTCPPort)!)
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else { return }
+        let endpoint = NWEndpoint.hostPort(host: NWEndpoint.Host(host), port: nwPort)
         let params = NWParameters.tcp
         let conn = NWConnection(to: endpoint, using: params)
 
@@ -292,59 +206,51 @@ public final class WiredConnectionManager: ObservableObject {
                 guard let self = self else { return }
                 switch state {
                 case .ready:
-                    self.nwConnection = conn
-                    self.activeTransportName = host == "127.0.0.1" ? "iPhone USB Direct (CoreDevice / usbmux)" : "USB CDC-NCM Ethernet (\(host):\(self.picoTCPPort))"
-                    self.startNetworkReceiveLoop()
-                    self.startHeartbeat()
-                    self.sendPing()
-                case .waiting(let error):
+                    self.log(tag: "INFO", message: "Connected to outbound endpoint \(host):\(port)")
+                    self.bindConnection(conn, transportName: transportName)
+                case .failed, .waiting:
                     conn.cancel()
-                    if host == "192.168.7.1" {
-                        self.probeUsbEthernet(host: "127.0.0.1")
-                    } else {
-                        if !self.status.isConnected {
-                            self.status = .disconnected(reason: "Plug in iPhone or Raspberry Pi Pico via USB")
-                        }
-                    }
-                case .failed(let error):
-                    conn.cancel()
-                    if host == "192.168.7.1" {
-                        // Fallback: check if local mock emulator is running on MacBook
-                        self.probeUsbEthernet(host: "127.0.0.1")
-                    } else {
-                        if !self.status.isConnected {
-                            self.status = .disconnected(reason: "Plug in iPhone or Raspberry Pi Pico via USB")
-                        }
-                    }
-                case .cancelled:
-                    break
                 default:
                     break
                 }
             }
         }
 
-        let queue = DispatchQueue(label: "com.invis.networkQueue")
-        conn.start(queue: queue)
+        conn.start(queue: networkQueue)
     }
 
-    private func startNetworkReceiveLoop() {
-        guard let conn = nwConnection else { return }
+    // MARK: - Bind Active Connection & Receive Loop
+    private func bindConnection(_ conn: NWConnection, transportName: String) {
+        // Disconnect previous if any
+        activeConnection?.cancel()
+        activeConnection = conn
+        activeTransportName = transportName
+
+        startReceiveLoop(conn)
+        startHeartbeat()
+        sendPing()
+    }
+
+    private func startReceiveLoop(_ conn: NWConnection) {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, isComplete, error in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
+                guard self.activeConnection === conn else { return }
+
                 if let data = data, let packetStr = String(data: data, encoding: .utf8) {
                     let lines = packetStr.components(separatedBy: "\n")
                     for line in lines where !line.trimmingCharacters(in: .whitespaces).isEmpty {
                         self.handleIncomingPacket(line)
                     }
                 }
+
                 if isComplete || error != nil {
-                    self.handleCableDisconnect(reason: "Wired network endpoint disconnected")
+                    self.handleDisconnect(reason: "Physical USB connection severed")
                     return
                 }
-                if self.nwConnection != nil {
-                    self.startNetworkReceiveLoop()
+
+                if self.activeConnection === conn {
+                    self.startReceiveLoop(conn)
                 }
             }
         }
@@ -375,33 +281,16 @@ public final class WiredConnectionManager: ObservableObject {
     }
 
     public func sendJSON(_ dict: [String: Any]) {
+        guard let conn = activeConnection else { return }
         guard let jsonData = try? JSONSerialization.data(withJSONObject: dict, options: []),
               var jsonString = String(data: jsonData, encoding: .utf8) else { return }
 
         jsonString += "\n"
+        let data = jsonString.data(using: .utf8)!
+        conn.send(content: data, completion: .contentProcessed({ _ in }))
 
-        // macOS Serial
-        #if os(macOS)
-        if serialFileDescriptor >= 0 {
-            let bytes = Array(jsonString.utf8)
-            bytes.withUnsafeBufferPointer { ptr in
-                _ = write(self.serialFileDescriptor, ptr.baseAddress, bytes.count)
-            }
-            if let cmd = dict["cmd"] as? String, cmd != "ping" {
-                log(tag: "TX", message: "[\(cmd.uppercased())] \(jsonString.trimmingCharacters(in: .newlines))")
-            }
-            return
-        }
-        #endif
-
-        // iOS / Network Socket
-        if let conn = nwConnection {
-            let data = jsonString.data(using: .utf8)!
-            conn.send(content: data, completion: .contentProcessed({ _ in }))
-            if let cmd = dict["cmd"] as? String, cmd != "ping" {
-                log(tag: "TX", message: "[\(cmd.uppercased())] \(jsonString.trimmingCharacters(in: .newlines))")
-            }
-            return
+        if let cmd = dict["cmd"] as? String, cmd != "ping" {
+            log(tag: "TX", message: "[\(cmd.uppercased())] \(jsonString.trimmingCharacters(in: .newlines))")
         }
     }
 
@@ -418,11 +307,11 @@ public final class WiredConnectionManager: ObservableObject {
             if let ts = dict["ts"] as? Double {
                 rtt = max(0.5, (now - ts) * 1000.0)
             } else {
-                rtt = 1.8
+                rtt = 1.5
             }
             self.pingLatencyMs = rtt
-            let version = (dict["version"] as? String) ?? "RP2040 v1.3.3"
-            
+            let version = (dict["version"] as? String) ?? "Firmware v1.3.3"
+
             if let devName = dict["device_name"] as? String {
                 self.connectedDeviceName = devName
             }
@@ -442,27 +331,16 @@ public final class WiredConnectionManager: ObservableObject {
         }
     }
 
-    private func handleCableDisconnect(reason: String) {
-        log(tag: "WARN", message: "Cable disconnected: \(reason)")
-        #if os(macOS)
-        closeSerial()
-        #endif
-        nwConnection?.cancel()
-        nwConnection = nil
+    private func handleDisconnect(reason: String) {
+        log(tag: "WARN", message: "Disconnected: \(reason)")
+        activeConnection?.cancel()
+        activeConnection = nil
         stopHeartbeat()
         status = .disconnected(reason: reason)
-
-        // Failsafe: hold last location state without crash
     }
 
     public func disconnect() {
-        #if os(macOS)
-        closeSerial()
-        #endif
-        nwConnection?.cancel()
-        nwConnection = nil
-        stopHeartbeat()
-        status = .disconnected(reason: "Manually disconnected")
+        handleDisconnect(reason: "Manually disconnected")
     }
 
     // MARK: - Spoofing API Commands
