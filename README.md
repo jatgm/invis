@@ -13,17 +13,7 @@
 
 </div>
 
----
 
-## GitHub Repository Description
-
-> **Suggested GitHub About Description**:  
-> *Native iOS wired location simulation interface with Apple Maps integration, turn-by-turn road routing, Gaussian drift, and dual hardware bridge support (MacBook usbmuxd & Raspberry Pi Pico RP2040).*
-
-**Suggested Topics / Tags**:  
-`ios`, `swift`, `swiftui`, `mapkit`, `corelocation`, `location-simulation`, `gps-spoofing`, `raspberry-pi-pico`, `rp2040`, `usbmuxd`, `dvt`, `hardware-bridge`
-
----
 
 ## Overview
 
@@ -55,11 +45,10 @@ graph TD
 
 ## Key Features
 
-- **Native MapKit & Liquid Glass Interface**:
-  - Interactive Apple Maps canvas with Apple's real native controls (`MapUserLocationButton`, `MapCompass`, `MapPitchToggle`).
-  - Automatic physical location acquisition via CoreLocation: the app starts centered on the user's authentic device coordinates.
-  - Native sheet presentation with background interaction (`presentationBackgroundInteraction(.enabled)`), allowing simultaneous panning, pinching, and sheet navigation.
-  - Curated landmark presets (Apple Park, Times Square, Eiffel Tower, Shibuya Crossing, and more) with semantic SF Symbols and zero emojis.
+- **Native MapKit & SwiftUI Interface**:
+  - Interactive Apple Maps canvas with tap-to-teleport and drag pin selection.
+  - Floating control panels for instant coordinate spoofing, speed selection, and telemetry.
+  - Curated landmark presets (Apple Park, Times Square, Eiffel Tower, Shibuya Crossing, and more).
 
 - **Sub-Millisecond Heartbeat & Link Diagnostics**:
   - Continuous ping/pong latency telemetry (typically <1.5 ms over physical USB).
@@ -96,12 +85,10 @@ graph TD
 ```
 invis/
 ├── invis/                       # Native iOS Application (SwiftUI + MapKit)
-│   ├── ContentView.swift        # Main container with native sheet & background interaction
-│   ├── MapView.swift            # Native MapKit with UserAnnotation & MapControls
+│   ├── ContentView.swift        # Main layout container
+│   ├── MapView.swift            # Interactive MapKit view & coordinate pin
 │   ├── ControlsView.swift       # Coordinate inputs, presets, position drift, telemetry
 │   ├── RoutePlannerView.swift   # Turn-by-turn road routing & playback engine
-│   ├── UserLocationManager.swift# CoreLocation manager for physical GPS initialization
-│   ├── LiquidGlass.swift        # Apple Liquid Glass design modifiers & haptics
 │   ├── LocationEngine.swift     # Geodesic math, timelines, Gaussian drift
 │   ├── WiredConnectionManager.swift # Dual-mode USB connection manager (usbmux & NCM)
 │   └── WiredStatusView.swift    # Status indicator & latency diagnostics
