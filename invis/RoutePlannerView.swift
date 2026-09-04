@@ -2,8 +2,9 @@
 //  RoutePlannerView.swift
 //  invis
 //
-//  Apple Native Grouped Form Route Planner with Turn-by-Turn Simulation.
-//  Uses Apple's official SwiftUI Form, Section, Picker, and ButtonStyle APIs.
+//  Route Planning and Simulation Panel.
+//  Uses MKDirections for realistic road routes, travel mode presets,
+//  speed multiplier sliders, and route playback controls (start/pause/resume/stop/loop).
 //
 
 import SwiftUI
@@ -17,13 +18,15 @@ public struct RoutePlannerView: View {
     @ObservedObject var connectionManager: WiredConnectionManager = .shared
 
     // Route endpoints
+    @State private var startAddress: String = "Current Pinned Location"
+    @State private var destinationAddress: String = "Times Square, New York"
     @State private var destCoordinate: CLLocationCoordinate2D = CLLocationCoordinate2D(latitude: 40.758000, longitude: -73.985500)
     @State private var isCalculatingRoute: Bool = false
     @State private var routeCalculationError: String? = nil
 
-    // Route parameters
+    // Route settings
     @State private var selectedMode: TravelMode = .drive
-    @State private var speedMultiplier: Double = 1.0
+    @State private var speedMultiplier: Double = 1.0 // 0.5x to 5.0x
     @State private var loopMode: Bool = false
     @State private var realisticTraffic: Bool = true
     @State private var totalDistanceMeters: Double = 0.0
@@ -41,281 +44,375 @@ public struct RoutePlannerView: View {
     }
 
     public var body: some View {
-        Form {
-            // 1. Waypoints & Calculation Section
-            Section {
-                // Origin Row
-                HStack(spacing: 12) {
+        ScrollView {
+            VStack(spacing: 16) {
+                // 1. Route Endpoints Card
+                endpointsCard
+
+                // 2. Travel Mode & Speed Multiplier Card
+                travelModeCard
+
+                // 3. Simulation Playback Controls & Progress Card
+                playbackControlsCard
+
+                // 4. Quick Route Presets
+                routePresetsCard
+            }
+            .padding(16)
+        }
+    }
+
+    // MARK: - Endpoints Card
+    private var endpointsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ROUTE DESTINATION")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 10) {
+                // Start location
+                HStack(spacing: 10) {
                     Circle()
-                        .strokeBorder(Color.blue, lineWidth: 2)
-                        .background(Circle().fill(Color.blue.opacity(0.15)))
-                        .frame(width: 14, height: 14)
+                        .fill(Color.green)
+                        .frame(width: 10, height: 10)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("ORIGIN")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        Text("START")
+                            .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.secondary)
-                        Text(String(format: "%.5f, %.5f", currentTarget.latitude, currentTarget.longitude))
-                            .font(.system(.body, design: .monospaced))
+                        Text(String(format: "Lat: %.5f, Lon: %.5f", currentTarget.latitude, currentTarget.longitude))
+                            .font(.system(size: 12, design: .monospaced))
                     }
+                    Spacer()
                 }
 
-                // Destination Row
-                HStack(spacing: 12) {
+                Divider()
+
+                // Destination location
+                HStack(spacing: 10) {
                     Circle()
                         .fill(Color.red)
-                        .frame(width: 14, height: 14)
+                        .frame(width: 10, height: 10)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("DESTINATION")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.secondary)
-                        Text(String(format: "%.5f, %.5f", destCoordinate.latitude, destCoordinate.longitude))
-                            .font(.system(.body, design: .monospaced))
+                        Text(String(format: "Lat: %.5f, Lon: %.5f", destCoordinate.latitude, destCoordinate.longitude))
+                            .font(.system(size: 12, design: .monospaced))
                     }
-
                     Spacer()
 
                     Button {
-                        HapticFeedback.selection()
+                        // Swap with target
                         let temp = destCoordinate
                         destCoordinate = currentTarget
                         currentTarget = temp
                     } label: {
                         Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
+            }
+            .padding(10)
+            .background(Color.secondary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
 
-                // Calculate Action
-                Button {
-                    HapticFeedback.impact(.medium)
-                    calculateAppleMapsRoute()
-                } label: {
-                    HStack {
-                        Spacer()
-                        if isCalculatingRoute {
-                            ProgressView()
-                                .controlSize(.small)
-                                .padding(.trailing, 4)
-                        } else {
-                            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                        }
-                        Text(isCalculatingRoute ? "Calculating..." : "Calculate Road Route")
-                            .font(.system(size: 15, weight: .semibold))
-                        Spacer()
+            // Compute Route Button
+            Button {
+                calculateAppleMapsRoute()
+            } label: {
+                HStack {
+                    if isCalculatingRoute {
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(.trailing, 4)
+                    } else {
+                        Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
                     }
+                    Text(isCalculatingRoute ? "Computing Road Geometry..." : "Calculate Turn-by-Turn Route")
+                        .font(.system(size: 13, weight: .semibold))
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
-                .tint(.blue)
-                .disabled(isCalculatingRoute)
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.cyan)
+            .disabled(isCalculatingRoute)
 
-                if let err = routeCalculationError {
-                    Text(err)
-                        .font(.system(size: 12))
-                        .foregroundColor(.orange)
-                }
-
-                if totalDistanceMeters > 0 {
-                    HStack {
-                        Text("Calculated Road Distance")
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text(String(format: "%.2f km", totalDistanceMeters / 1000.0))
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.semibold)
-                    }
-                }
-            } header: {
-                Text("ROUTE ENDPOINTS")
+            if let err = routeCalculationError {
+                Text(err)
+                    .font(.system(size: 11))
+                    .foregroundColor(.orange)
             }
 
-            // 2. Travel Profile Section
-            Section {
-                // Segmented Profile
-                Picker("Travel Mode", selection: $selectedMode) {
-                    ForEach(TravelMode.allCases) { mode in
-                        Label(mode.rawValue, systemImage: mode.iconName)
-                            .tag(mode)
-                    }
+            if totalDistanceMeters > 0 {
+                HStack {
+                    Text("Total Distance:")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(String(format: "%.2f km", totalDistanceMeters / 1000.0))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(.primary)
                 }
-                .pickerStyle(.segmented)
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
 
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text("Speed Factor")
-                            .foregroundColor(.secondary)
-                        Spacer()
-                        Text(String(format: "%.1fx (%d km/h)", speedMultiplier, Int(effectiveSpeedKmh)))
-                            .font(.system(.body, design: .monospaced))
-                            .fontWeight(.semibold)
-                            .foregroundColor(.blue)
+    // MARK: - Travel Mode & Speed Card
+    private var travelModeCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("TRAVEL PROFILE & SPEED")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.secondary)
+
+            // Mode Selector
+            HStack(spacing: 8) {
+                ForEach(TravelMode.allCases) { mode in
+                    Button {
+                        selectedMode = mode
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: mode.iconName)
+                                .font(.system(size: 14))
+                            Text(mode.rawValue)
+                                .font(.system(size: 11, weight: .medium))
+                            Text("\(Int(mode.baseSpeedKmh)) km/h")
+                                .font(.system(size: 9))
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                        .background(selectedMode == mode ? Color.blue.opacity(0.2) : Color.secondary.opacity(0.08))
+                        .foregroundColor(selectedMode == mode ? .blue : .primary)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(selectedMode == mode ? Color.blue : Color.clear, lineWidth: 1.5)
+                        )
                     }
-                    Slider(value: $speedMultiplier, in: 0.5...4.0, step: 0.25)
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // Speed Multiplier Slider
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Speed Multiplier:")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    Text(String(format: "%.1fx (%d km/h)", speedMultiplier, Int(effectiveSpeedKmh)))
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundColor(.blue)
+                }
+
+                Slider(value: $speedMultiplier, in: 0.5...5.0, step: 0.25)
+                    .tint(.blue)
+            }
+
+            // Options: Realistic traffic & Loop
+            Toggle(isOn: $realisticTraffic) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Realistic Traffic Speed Variation")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("Adds natural ±5% speed fluctuations & corner easing")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .tint(.blue)
+
+            Toggle(isOn: $loopMode) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Continuous Loop Mode")
+                        .font(.system(size: 12, weight: .medium))
+                    Text("Automatically loops route simulation endlessly")
+                        .font(.system(size: 10))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .tint(.blue)
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Playback Controls Card
+    private var playbackControlsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("SIMULATION CONTROLS")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.secondary)
+
+            // Progress Bar
+            if connectionManager.isRoutePlaying {
+                VStack(spacing: 4) {
+                    ProgressView(value: connectionManager.routeProgress)
+                        .progressViewStyle(.linear)
                         .tint(.blue)
+
+                    HStack {
+                        Text(String(format: "%.0f%% Complete", connectionManager.routeProgress * 100))
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .foregroundColor(.blue)
+                        Spacer()
+                        Text(formatRemainingTime(connectionManager.routeRemainingSeconds))
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.secondary)
+                    }
                 }
                 .padding(.vertical, 4)
-
-                Toggle("Simulate Road Traffic Variance", isOn: $realisticTraffic)
-                    .tint(.blue)
-
-                Toggle("Continuous Route Loop", isOn: $loopMode)
-                    .tint(.blue)
-            } header: {
-                Text("TRAVEL PROFILE")
             }
 
-            // 3. Playback Section
-            Section {
-                if connectionManager.isRoutePlaying {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ProgressView(value: connectionManager.routeProgress)
-                            .tint(.blue)
-
-                        HStack {
-                            Text("Simulating Route")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.blue)
-
-                            Spacer()
-
-                            Text(String(format: "%02d:%02d remaining", Int(connectionManager.routeRemainingSeconds) / 60, Int(connectionManager.routeRemainingSeconds) % 60))
-                                .font(.system(size: 12, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-
+            // Action Buttons Row
+            HStack(spacing: 10) {
                 if !connectionManager.isRoutePlaying {
+                    // Start Route
                     Button {
-                        HapticFeedback.impact(.medium)
-                        startSimulation()
+                        startRouteSimulation()
                     } label: {
                         HStack {
-                            Spacer()
                             Image(systemName: "play.fill")
-                            Text("Start Route Simulation")
-                                .fontWeight(.semibold)
-                            Spacer()
+                            Text("Start Route")
                         }
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
                     }
                     .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.capsule)
-                    .controlSize(.large)
-                    .tint(.blue)
-                    .disabled(routeCoordinates.count < 2 || !connectionManager.status.isConnected)
+                    .tint(.green)
+                    .disabled(!connectionManager.status.isConnected || routeCoordinates.count < 2)
                 } else {
-                    HStack(spacing: 12) {
-                        if connectionManager.isRoutePaused {
-                            Button {
-                                HapticFeedback.impact(.light)
-                                connectionManager.resumeRoute()
-                            } label: {
-                                HStack {
-                                    Spacer()
-                                    Image(systemName: "play.fill")
-                                    Text("Resume")
-                                    Spacer()
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .buttonBorderShape(.capsule)
-                            .tint(.blue)
-                        } else {
-                            Button {
-                                HapticFeedback.impact(.light)
-                                connectionManager.pauseRoute()
-                            } label: {
-                                HStack {
-                                    Spacer()
-                                    Image(systemName: "pause.fill")
-                                    Text("Pause")
-                                    Spacer()
-                                }
-                            }
-                            .buttonStyle(.bordered)
-                            .buttonBorderShape(.capsule)
-                        }
-
-                        Button(role: .destructive) {
-                            HapticFeedback.impact(.light)
-                            connectionManager.stopRoute()
+                    // Pause / Resume
+                    if connectionManager.isRoutePaused {
+                        Button {
+                            connectionManager.resumeRoute()
                         } label: {
                             HStack {
-                                Spacer()
-                                Image(systemName: "stop.fill")
-                                Text("Stop")
-                                Spacer()
+                                Image(systemName: "play.fill")
+                                Text("Resume")
                             }
+                            .font(.system(size: 13, weight: .bold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.yellow)
+                    } else {
+                        Button {
+                            connectionManager.pauseRoute()
+                        } label: {
+                            HStack {
+                                Image(systemName: "pause.fill")
+                                Text("Pause")
+                            }
+                            .font(.system(size: 13, weight: .bold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 38)
                         }
                         .buttonStyle(.bordered)
-                        .buttonBorderShape(.capsule)
-                        .tint(.red)
+                        .tint(.yellow)
                     }
-                }
-            } header: {
-                Text("SIMULATION CONTROLS")
-            }
 
-            // 4. Preset Circuits Section
-            Section {
+                    // Stop
+                    Button {
+                        connectionManager.stopRoute()
+                    } label: {
+                        HStack {
+                            Image(systemName: "stop.fill")
+                            Text("Stop")
+                        }
+                        .font(.system(size: 13, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 38)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                }
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Quick Route Presets
+    private var routePresetsCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("QUICK SCENARIO PRESETS")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 8) {
                 Button {
-                    HapticFeedback.selection()
+                    // Cupertino Campus Loop: Apple Park Visitor Center to Infinite Loop
                     currentTarget = CLLocationCoordinate2D(latitude: 37.334900, longitude: -122.009020)
-                    destCoordinate = CLLocationCoordinate2D(latitude: 37.331800, longitude: -122.030500)
+                    destCoordinate = CLLocationCoordinate2D(latitude: 37.331820, longitude: -122.031180)
                     calculateAppleMapsRoute()
                 } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "apple.logo")
-                            .font(.system(size: 15))
-                            .foregroundColor(.blue)
-                            .frame(width: 24)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Apple Park Perimeter")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.primary)
-                            Text("Cupertino Infinite Loop Circuit (5.2 km)")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                    }
+                    presetRow(title: "Apple Park → Infinite Loop", subtitle: "Cupertino, CA (~2.4 km Drive)", icon: "apple.logo")
                 }
+                .buttonStyle(.plain)
 
                 Button {
-                    HapticFeedback.selection()
-                    currentTarget = CLLocationCoordinate2D(latitude: 40.765000, longitude: -73.973000)
+                    // Manhattan Cruise: Central Park South to Times Square
+                    currentTarget = CLLocationCoordinate2D(latitude: 40.766300, longitude: -73.977400)
                     destCoordinate = CLLocationCoordinate2D(latitude: 40.758000, longitude: -73.985500)
                     calculateAppleMapsRoute()
                 } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "building.2.fill")
-                            .font(.system(size: 15))
-                            .foregroundColor(.blue)
-                            .frame(width: 24)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Manhattan Midtown Express")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.primary)
-                            Text("Central Park to Times Square (3.4 km)")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                    }
+                    presetRow(title: "Central Park → Times Square", subtitle: "Manhattan, NY (~1.1 km Cruise)", icon: "building.2.fill")
                 }
-            } header: {
-                Text("PRESET CIRCUITS")
+                .buttonStyle(.plain)
+
+                Button {
+                    // Tokyo Cruise: Shibuya Crossing to Roppongi Hills
+                    currentTarget = CLLocationCoordinate2D(latitude: 35.659500, longitude: 139.700500)
+                    destCoordinate = CLLocationCoordinate2D(latitude: 35.660400, longitude: 139.729200)
+                    calculateAppleMapsRoute()
+                } label: {
+                    presetRow(title: "Shibuya Crossing → Roppongi", subtitle: "Tokyo, Japan (~3.2 km Drive)", icon: "car.fill")
+                }
+                .buttonStyle(.plain)
             }
         }
-        .scrollContentBackground(.hidden)
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
+    private func presetRow(title: String, subtitle: String, icon: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 13))
+                .foregroundColor(.blue)
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.primary)
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10))
+                .foregroundColor(.secondary)
+        }
+        .padding(8)
+        .background(Color.secondary.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    // MARK: - Route Calculation Engine
     private func calculateAppleMapsRoute() {
         isCalculatingRoute = true
         routeCalculationError = nil
@@ -329,32 +426,40 @@ public struct RoutePlannerView: View {
         directions.calculate { response, error in
             Task { @MainActor in
                 self.isCalculatingRoute = false
-                if let error = error {
-                    self.routeCalculationError = error.localizedDescription
-                    return
-                }
+                if let route = response?.routes.first {
+                    // Extract point coordinates from MKPolyline
+                    let pointCount = route.polyline.pointCount
+                    var coords = [CLLocationCoordinate2D](repeating: CLLocationCoordinate2D(), count: pointCount)
+                    route.polyline.getCoordinates(&coords, range: NSRange(location: 0, length: pointCount))
 
-                guard let primaryRoute = response?.routes.first else {
-                    self.routeCalculationError = "No valid road route found between points."
-                    return
+                    self.routeCoordinates = coords
+                    self.totalDistanceMeters = route.distance
+                    self.connectionManager.log(tag: "INFO", message: "Computed Apple Maps turn-by-turn road route with \(coords.count) points (\(String(format: "%.2f km", route.distance / 1000.0)))")
+                } else {
+                    // Fallback to Great-Circle Haversine direct interpolation
+                    let numSteps = 50
+                    let fallbackCoords = LocationEngine.shared.interpolate(from: currentTarget, to: destCoordinate, steps: numSteps)
+                    self.routeCoordinates = [currentTarget] + fallbackCoords
+                    self.totalDistanceMeters = LocationEngine.shared.haversineDistance(from: currentTarget, to: destCoordinate)
+                    self.routeCalculationError = "Road route unavailable. Using geodesic interpolation fallback."
+                    self.connectionManager.log(tag: "WARN", message: "Apple Maps directions failed: \(error?.localizedDescription ?? "No road route"). Fallback to Haversine line.")
                 }
-
-                self.totalDistanceMeters = primaryRoute.distance
-                var coordinates = [CLLocationCoordinate2D](repeating: CLLocationCoordinate2D(), count: primaryRoute.polyline.pointCount)
-                primaryRoute.polyline.getCoordinates(&coordinates, range: NSRange(location: 0, length: primaryRoute.polyline.pointCount))
-                self.routeCoordinates = coordinates
-                HapticFeedback.notification(.success)
             }
         }
     }
 
-    private func startSimulation() {
-        guard routeCoordinates.count >= 2 else { return }
+    private func startRouteSimulation() {
         connectionManager.startRoute(
             waypoints: routeCoordinates,
             speedKmh: effectiveSpeedKmh,
             loop: loopMode,
             realisticTraffic: realisticTraffic
         )
+    }
+
+    private func formatRemainingTime(_ seconds: TimeInterval) -> String {
+        let mins = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        return String(format: "ETA: %02d:%02d", mins, secs)
     }
 }

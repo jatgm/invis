@@ -2,8 +2,8 @@
 //  ControlsView.swift
 //  invis
 //
-//  Apple Native Grouped Form with Translucent Glass Styling.
-//  Uses Apple's official SwiftUI Form, Section, and ButtonStyle APIs.
+//  Control panel for instant location spoofing, high-precision coordinates,
+//  Gaussian micro-jitter drift controls, landmark presets, and safety killswitch.
 //
 
 import SwiftUI
@@ -14,8 +14,6 @@ public struct ControlsView: View {
     @Binding public var targetAltitude: Double
 
     @ObservedObject var connectionManager: WiredConnectionManager = .shared
-    @ObservedObject var locationManager: UserLocationManager = .shared
-
     @State private var latString: String = ""
     @State private var lonString: String = ""
     @State private var altString: String = ""
@@ -31,315 +29,25 @@ public struct ControlsView: View {
     }
 
     public var body: some View {
-        Form {
-            // 1. Simulation Actions Section
-            Section {
-                Button {
-                    HapticFeedback.impact(.medium)
-                    connectionManager.teleport(to: targetCoordinate, altitude: targetAltitude)
-                } label: {
-                    HStack {
-                        Spacer()
-                        Image(systemName: connectionManager.isSpoofingActive ? "location.fill" : "location")
-                            .font(.system(size: 15, weight: .semibold))
-                        Text(connectionManager.isSpoofingActive ? "Update Simulation" : "Simulate Location")
-                            .font(.system(size: 16, weight: .semibold))
-                        Spacer()
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.capsule)
-                .controlSize(.large)
-                .tint(.blue)
-                .disabled(!connectionManager.status.isConnected)
+        ScrollView {
+            VStack(spacing: 16) {
+                // 1. Simulation Actions Card (Spoof & Safety Reset)
+                simulationActionsCard
 
-                if connectionManager.isSpoofingActive {
-                    Button(role: .destructive) {
-                        HapticFeedback.impact(.light)
-                        showResetConfirm = true
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Image(systemName: "arrow.counterclockwise")
-                            Text("Restore Physical Hardware GPS")
-                                .font(.system(size: 14, weight: .medium))
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.capsule)
-                    .tint(.red)
-                    .confirmationDialog(
-                        "Restore Hardware GPS?",
-                        isPresented: $showResetConfirm,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Restore Authentic Location", role: .destructive) {
-                            HapticFeedback.notification(.success)
-                            connectionManager.resetLocation()
-                        }
-                        Button("Cancel", role: .cancel) {}
-                    } message: {
-                        Text("This clears all active location simulation overrides on the hardware and restores authentic system GPS.")
-                    }
-                }
+                // 2. High-Precision Coordinate Inputs Card
+                coordinateInputsCard
+
+                // 3. Natural Micro-Jitter (GPS Drift) Card
+                microJitterCard
+
+                // 4. Quick Landmark Presets Grid
+                presetsCard
+
+                // 5. Activity Console / Monospace Log
+                activityConsoleCard
             }
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 4, leading: 0, bottom: 4, trailing: 0))
-
-            // 2. High-Precision Coordinate Telemetry
-            Section {
-                // Latitude
-                HStack {
-                    Text("Latitude")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    TextField("Latitude", text: $latString)
-                        .multilineTextAlignment(.trailing)
-                        .font(.system(.body, design: .monospaced))
-                        .onSubmit {
-                            if let val = Double(latString), val >= -90.0 && val <= 90.0 {
-                                targetCoordinate.latitude = val
-                            } else {
-                                syncInputStrings()
-                            }
-                        }
-
-                    HStack(spacing: 2) {
-                        Button {
-                            HapticFeedback.selection()
-                            targetCoordinate.latitude = min(90.0, targetCoordinate.latitude + 0.001)
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 11, weight: .bold))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-
-                        Button {
-                            HapticFeedback.selection()
-                            targetCoordinate.latitude = max(-90.0, targetCoordinate.latitude - 0.001)
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 11, weight: .bold))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                    }
-                }
-
-                // Longitude
-                HStack {
-                    Text("Longitude")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    TextField("Longitude", text: $lonString)
-                        .multilineTextAlignment(.trailing)
-                        .font(.system(.body, design: .monospaced))
-                        .onSubmit {
-                            if let val = Double(lonString), val >= -180.0 && val <= 180.0 {
-                                targetCoordinate.longitude = val
-                            } else {
-                                syncInputStrings()
-                            }
-                        }
-
-                    HStack(spacing: 2) {
-                        Button {
-                            HapticFeedback.selection()
-                            targetCoordinate.longitude = min(180.0, targetCoordinate.longitude + 0.001)
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 11, weight: .bold))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-
-                        Button {
-                            HapticFeedback.selection()
-                            targetCoordinate.longitude = max(-180.0, targetCoordinate.longitude - 0.001)
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 11, weight: .bold))
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                    }
-                }
-
-                // Altitude
-                HStack {
-                    Text("Altitude")
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    TextField("Meters", text: $altString)
-                        .multilineTextAlignment(.trailing)
-                        .font(.system(.body, design: .monospaced))
-                        .onSubmit {
-                            if let val = Double(altString) {
-                                targetAltitude = val
-                            } else {
-                                syncInputStrings()
-                            }
-                        }
-                    Text("m")
-                        .foregroundColor(.secondary)
-                }
-
-                // Reset to My Real Physical GPS Location
-                Button {
-                    HapticFeedback.selection()
-                    if let realLocation = locationManager.userLocation {
-                        targetCoordinate = realLocation
-                    } else {
-                        locationManager.requestLocationOnce()
-                    }
-                } label: {
-                    HStack {
-                        Image(systemName: "location.circle.fill")
-                            .foregroundColor(.blue)
-                        Text("Reset to My Physical Location")
-                            .foregroundColor(.blue)
-                        Spacer()
-                        if locationManager.userLocation != nil {
-                            Text("Acquired")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-            } header: {
-                Text("COORDINATES")
-            }
-
-            // 3. Natural Position Drift Section
-            Section {
-                Toggle("Natural Multi-Path Drift", isOn: $connectionManager.naturalDriftEnabled)
-                    .tint(.blue)
-                    .onChange(of: connectionManager.naturalDriftEnabled) { _, newValue in
-                        HapticFeedback.selection()
-                        connectionManager.setNaturalDrift(enabled: newValue, radiusMeters: connectionManager.driftRadiusMeters)
-                    }
-
-                if connectionManager.naturalDriftEnabled {
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text("Variance Radius")
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(String(format: "±%.1f m", connectionManager.driftRadiusMeters))
-                                .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                                .foregroundColor(.blue)
-                        }
-
-                        Slider(value: $connectionManager.driftRadiusMeters, in: 0.5...5.0, step: 0.2)
-                            .tint(.blue)
-                            .onChange(of: connectionManager.driftRadiusMeters) { _, newValue in
-                                connectionManager.setNaturalDrift(enabled: true, radiusMeters: newValue)
-                            }
-                    }
-                    .padding(.vertical, 4)
-                }
-            } header: {
-                Text("POSITION DRIFT")
-            } footer: {
-                Text("Applies subtle Gaussian random-walk drift to reflect authentic GNSS multi-path variance.")
-            }
-
-            // 4. Landmarks Section
-            Section {
-                ForEach(LocationEngine.defaultPresets) { preset in
-                    Button {
-                        HapticFeedback.selection()
-                        targetCoordinate = preset.coordinate
-                        targetAltitude = preset.altitude
-                        if connectionManager.status.isConnected && connectionManager.isSpoofingActive {
-                            connectionManager.teleport(to: preset.coordinate, altitude: preset.altitude)
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: preset.symbolName)
-                                .font(.system(size: 15))
-                                .foregroundColor(.blue)
-                                .frame(width: 26)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(preset.name)
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundColor(.primary)
-
-                                Text(preset.subtitle)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.secondary.opacity(0.6))
-                        }
-                        .padding(.vertical, 2)
-                    }
-                }
-            } header: {
-                Text("LANDMARK PRESETS")
-            }
-
-            // 5. Diagnostics Console Section
-            Section {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 4) {
-                            ForEach(connectionManager.logs) { entry in
-                                HStack(alignment: .top, spacing: 6) {
-                                    Text(entry.formattedTime)
-                                        .font(.system(size: 9, design: .monospaced))
-                                        .foregroundColor(.secondary)
-
-                                    Text("[\(entry.tag)]")
-                                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
-                                        .foregroundColor(colorForTag(entry.tag))
-
-                                    Text(entry.message)
-                                        .font(.system(size: 10, design: .monospaced))
-                                        .foregroundColor(.primary)
-                                        .textSelection(.enabled)
-                                }
-                                .id(entry.id)
-                            }
-                        }
-                        .padding(6)
-                    }
-                    .frame(maxHeight: isConsoleExpanded ? 240 : 90)
-                    .onChange(of: connectionManager.logs.count) { _, _ in
-                        if let last = connectionManager.logs.last {
-                            proxy.scrollTo(last.id, anchor: .bottom)
-                        }
-                    }
-                }
-
-                HStack {
-                    Button("Clear Logs") {
-                        connectionManager.clearLogs()
-                    }
-                    .font(.system(size: 12))
-
-                    Spacer()
-
-                    Button(isConsoleExpanded ? "Collapse" : "Expand") {
-                        withAnimation {
-                            isConsoleExpanded.toggle()
-                        }
-                    }
-                    .font(.system(size: 12))
-                }
-            } header: {
-                Text("HARDWARE LOGS")
-            }
+            .padding(16)
         }
-        .scrollContentBackground(.hidden)
         .onAppear {
             syncInputStrings()
         }
@@ -357,12 +65,354 @@ public struct ControlsView: View {
         altString = String(format: "%.1f", targetAltitude)
     }
 
+    // MARK: - Simulation Actions Card
+    private var simulationActionsCard: some View {
+        VStack(spacing: 12) {
+            // Instant Spoof Button
+            Button {
+                connectionManager.teleport(to: targetCoordinate, altitude: targetAltitude)
+            } label: {
+                HStack {
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 16, weight: .bold))
+                    Text(connectionManager.isSpoofingActive ? "Update Simulated Location" : "Spoof Location")
+                        .font(.system(size: 15, weight: .bold))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 42)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(connectionManager.status.isConnected ? .blue : .gray)
+            .disabled(!connectionManager.status.isConnected)
+
+            // Safety Reset (Killswitch) Button
+            Button {
+                showResetConfirm = true
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.counterclockwise.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                    Text("Reset to Physical GPS (Killswitch)")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+            .disabled(!connectionManager.status.isConnected && !connectionManager.isSpoofingActive)
+            .confirmationDialog(
+                "Reset to Physical GPS?",
+                isPresented: $showResetConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Reset Hardware GPS", role: .destructive) {
+                    connectionManager.resetLocation()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will instantly stop all spoofing, close active overrides on the Pico dongle, and restore your device's authentic hardware GPS signal.")
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Coordinate Inputs Card
+    private var coordinateInputsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("MANUAL COORDINATES")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.secondary)
+                Spacer()
+
+                Button {
+                    // Quick San Francisco / Default reset
+                    targetCoordinate = CLLocationCoordinate2D(latitude: 37.334900, longitude: -122.009020)
+                } label: {
+                    Text("Reset Default")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.blue)
+            }
+
+            VStack(spacing: 8) {
+                // Latitude Input
+                HStack {
+                    Text("LAT")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 32, alignment: .leading)
+
+                    TextField("-90.0 to 90.0", text: $latString)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 13, design: .monospaced))
+                        .onSubmit {
+                            if let val = Double(latString), val >= -90.0 && val <= 90.0 {
+                                targetCoordinate.latitude = val
+                            } else {
+                                syncInputStrings()
+                            }
+                        }
+
+                    // Stepper nudge
+                    HStack(spacing: 2) {
+                        Button {
+                            targetCoordinate.latitude = min(90.0, targetCoordinate.latitude + 0.001)
+                        } label: {
+                            Image(systemName: "plus")
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+
+                        Button {
+                            targetCoordinate.latitude = max(-90.0, targetCoordinate.latitude - 0.001)
+                        } label: {
+                            Image(systemName: "minus")
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                    }
+                }
+
+                // Longitude Input
+                HStack {
+                    Text("LON")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 32, alignment: .leading)
+
+                    TextField("-180.0 to 180.0", text: $lonString)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 13, design: .monospaced))
+                        .onSubmit {
+                            if let val = Double(lonString), val >= -180.0 && val <= 180.0 {
+                                targetCoordinate.longitude = val
+                            } else {
+                                syncInputStrings()
+                            }
+                        }
+
+                    // Stepper nudge
+                    HStack(spacing: 2) {
+                        Button {
+                            targetCoordinate.longitude = min(180.0, targetCoordinate.longitude + 0.001)
+                        } label: {
+                            Image(systemName: "plus")
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+
+                        Button {
+                            targetCoordinate.longitude = max(-180.0, targetCoordinate.longitude - 0.001)
+                        } label: {
+                            Image(systemName: "minus")
+                                .frame(width: 24, height: 24)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                    }
+                }
+
+                // Altitude Input
+                HStack {
+                    Text("ALT")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 32, alignment: .leading)
+
+                    TextField("Meters (e.g. 15.0)", text: $altString)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 13, design: .monospaced))
+                        .onSubmit {
+                            if let val = Double(altString) {
+                                targetAltitude = val
+                            } else {
+                                syncInputStrings()
+                            }
+                        }
+
+                    Text("m")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.secondary)
+                }
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Natural Micro-Jitter (GPS Drift) Card
+    private var microJitterCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle(isOn: $connectionManager.naturalDriftEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Realistic Micro-Jitter")
+                        .font(.system(size: 13, weight: .semibold))
+                    Text("Gaussian random-walk drift to evade static detection")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .tint(.cyan)
+            .onChange(of: connectionManager.naturalDriftEnabled) { _, newValue in
+                connectionManager.setNaturalDrift(enabled: newValue, radiusMeters: connectionManager.driftRadiusMeters)
+            }
+
+            if connectionManager.naturalDriftEnabled {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Drift Radius:")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(String(format: "±%.1f meters (σ)", connectionManager.driftRadiusMeters))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundColor(.cyan)
+                    }
+
+                    Slider(value: $connectionManager.driftRadiusMeters, in: 0.5...5.0, step: 0.1) {
+                        Text("Jitter Radius")
+                    }
+                    .tint(.cyan)
+                    .onChange(of: connectionManager.driftRadiusMeters) { _, newValue in
+                        connectionManager.setNaturalDrift(enabled: true, radiusMeters: newValue)
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Presets Card
+    private var presetsCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("LANDMARK PRESETS")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(.secondary)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                ForEach(LocationEngine.defaultPresets) { preset in
+                    Button {
+                        targetCoordinate = preset.coordinate
+                        targetAltitude = preset.altitude
+                        if connectionManager.status.isConnected && connectionManager.isSpoofingActive {
+                            connectionManager.teleport(to: preset.coordinate, altitude: preset.altitude)
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: preset.symbolName)
+                                .font(.system(size: 12))
+                                .foregroundColor(.blue)
+                                .frame(width: 18)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(preset.name)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                Text(preset.subtitle)
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color.secondary.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - Activity Console Card
+    private var activityConsoleCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("WIRED ACTIVITY LOG")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.secondary)
+                Spacer()
+
+                Button {
+                    connectionManager.clearLogs()
+                } label: {
+                    Text("Clear")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+                .foregroundColor(.secondary)
+
+                Button {
+                    isConsoleExpanded.toggle()
+                } label: {
+                    Image(systemName: isConsoleExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10))
+                }
+                .buttonStyle(.plain)
+            }
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 3) {
+                        ForEach(connectionManager.logs) { entry in
+                            HStack(alignment: .top, spacing: 6) {
+                                Text(entry.formattedTime)
+                                    .font(.system(size: 9, design: .monospaced))
+                                    .foregroundColor(.secondary)
+
+                                Text("[\(entry.tag)]")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundColor(colorForTag(entry.tag))
+
+                                Text(entry.message)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundColor(.primary)
+                                    .textSelection(.enabled)
+                            }
+                            .id(entry.id)
+                        }
+                    }
+                }
+                .frame(maxHeight: isConsoleExpanded ? 240 : 90)
+                .padding(8)
+                .background(Color.black.opacity(0.4))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .onChange(of: connectionManager.logs.count) { _, _ in
+                    if let last = connectionManager.logs.last {
+                        proxy.scrollTo(last.id, anchor: .bottom)
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
     private func colorForTag(_ tag: String) -> Color {
         switch tag {
         case "TX": return .cyan
         case "RX": return .green
         case "ERR": return .red
-        case "WARN": return .orange
+        case "WARN": return .yellow
+        case "MAP": return .purple
         default: return .secondary
         }
     }
