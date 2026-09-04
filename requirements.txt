@@ -1,0 +1,2 @@
+# Invis Mac USB Bridge Requirements
+pymobiledevice3>=11.3.0

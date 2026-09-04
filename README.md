@@ -147,18 +147,13 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun xcodebuild \
 When your iPhone is plugged into your MacBook via USB-C cable:
 
 1. Connect your iPhone to your Mac with a standard USB-C cable.
-2. Set up the Python virtual environment (if not already done):
+2. Start the Mac USB bridge (automatically creates `.venv` and installs `requirements.txt`):
    ```bash
-   python3 -m venv .venv
-   .venv/bin/pip install pymobiledevice3
+   ./run_bridge.sh
    ```
-3. Start the Mac USB bridge daemon:
-   ```bash
-   .venv/bin/python3 scripts/mac_bridge.py
-   ```
-4. Launch **Invis** on your iPhone. The top status banner will immediately show **MacBook USB Bridge** with sub-2ms ping latency.
-5. Select any location or route on your phone, click **Spoof Location**, and observe your phone's real system location update live across all apps.
-6. Click **Reset GPS** to restore physical authentic hardware GPS at any time.
+3. Launch **Invis** on your iPhone. The top status banner will immediately show **MacBook USB Bridge** with sub-2ms ping latency.
+4. Select any location or route on your phone, click **Spoof Location**, and observe your phone's real system location update live across all apps.
+5. Click **Reset GPS** to restore physical authentic hardware GPS at any time.
 
 ---
 

@@ -57,11 +57,9 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun xcodebuild \
 
 ### Mode 1: iPhone Connected to MacBook via USB-C Cable
 1. Connect your iPhone to your MacBook with a standard USB-C cable.
-2. In Terminal on the Mac, start the Mac USB bridge daemon:
+2. In Terminal on the Mac, run the bridge launcher (automatically creates `.venv` and installs `requirements.txt`):
    ```bash
-   python3 -m venv .venv
-   .venv/bin/pip install pymobiledevice3
-   .venv/bin/python3 scripts/mac_bridge.py
+   ./run_bridge.sh
    ```
 3. Open **Invis** on your iPhone.
 4. The top status bar will immediately transition to **MacBook USB Bridge** with sub-2ms ping latency.
