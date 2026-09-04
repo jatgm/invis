@@ -2,10 +2,8 @@
 //  RoutePlannerView.swift
 //  invis
 //
-//  Liquid Glass Route Planner & Interpolation Simulation.
-//  Strictly conforms to iOS Human Interface Guidelines:
-//  Subtle specular borders, translucent ultra-thin materials,
-//  clean typography, semantic SF Symbols, and zero emojis.
+//  Apple Native Grouped Form Route Planner with Turn-by-Turn Simulation.
+//  Uses Apple's official SwiftUI Form, Section, Picker, and ButtonStyle APIs.
 //
 
 import SwiftUI
@@ -43,77 +41,37 @@ public struct RoutePlannerView: View {
     }
 
     public var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 14) {
-                // 1. Waypoints & Route Calculation Card
-                waypointsCard
-
-                // 2. Travel Profile & Speed Multiplier Card
-                travelProfileCard
-
-                // 3. Playback Controls & Timeline Card
-                playbackControlsCard
-
-                // 4. Quick Route Presets Card
-                quickRoutesCard
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        }
-    }
-
-    // MARK: - 1. Waypoints Card
-    private var waypointsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("DESTINATION")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(.secondary)
-
-            VStack(spacing: 0) {
-                // Origin
+        Form {
+            // 1. Waypoints & Calculation Section
+            Section {
+                // Origin Row
                 HStack(spacing: 12) {
                     Circle()
                         .strokeBorder(Color.blue, lineWidth: 2)
                         .background(Circle().fill(Color.blue.opacity(0.15)))
                         .frame(width: 14, height: 14)
 
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("ORIGIN")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundColor(.secondary)
-
                         Text(String(format: "%.5f, %.5f", currentTarget.latitude, currentTarget.longitude))
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(.primary)
+                            .font(.system(.body, design: .monospaced))
                     }
-
-                    Spacer()
-                }
-                .padding(.vertical, 8)
-
-                // Vector Track Divider
-                HStack {
-                    Rectangle()
-                        .fill(Color.secondary.opacity(0.2))
-                        .frame(width: 1.5, height: 18)
-                        .padding(.leading, 6)
-                    Spacer()
                 }
 
-                // Destination
+                // Destination Row
                 HStack(spacing: 12) {
                     Circle()
                         .fill(Color.red)
                         .frame(width: 14, height: 14)
 
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("DESTINATION")
-                            .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundColor(.secondary)
-
                         Text(String(format: "%.5f, %.5f", destCoordinate.latitude, destCoordinate.longitude))
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundColor(.primary)
+                            .font(.system(.body, design: .monospaced))
                     }
 
                     Spacer()
@@ -125,331 +83,239 @@ public struct RoutePlannerView: View {
                         currentTarget = temp
                     } label: {
                         Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background(Color.primary.opacity(0.04))
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, 8)
-            }
-            .padding(.horizontal, 10)
-            .background(Color.primary.opacity(0.025))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            // Compute Button
-            Button {
-                HapticFeedback.impact(.medium)
-                calculateAppleMapsRoute()
-            } label: {
-                HStack(spacing: 6) {
-                    if isCalculatingRoute {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
                             .font(.system(size: 13, weight: .semibold))
                     }
-                    Text(isCalculatingRoute ? "Calculating Road Geometry..." : "Calculate Turn-by-Turn Route")
-                        .font(.system(size: 13, weight: .semibold))
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.blue)
-                )
-                .foregroundColor(.white)
-            }
-            .buttonStyle(.plain)
-            .disabled(isCalculatingRoute)
 
-            if let err = routeCalculationError {
-                Text(err)
-                    .font(.system(size: 11))
-                    .foregroundColor(.orange)
-            }
-
-            if totalDistanceMeters > 0 {
-                HStack {
-                    Text("Road Distance")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(String(format: "%.2f km", totalDistanceMeters / 1000.0))
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.primary)
+                // Calculate Action
+                Button {
+                    HapticFeedback.impact(.medium)
+                    calculateAppleMapsRoute()
+                } label: {
+                    HStack {
+                        Spacer()
+                        if isCalculatingRoute {
+                            ProgressView()
+                                .controlSize(.small)
+                                .padding(.trailing, 4)
+                        } else {
+                            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                        }
+                        Text(isCalculatingRoute ? "Calculating..." : "Calculate Road Route")
+                            .font(.system(size: 15, weight: .semibold))
+                        Spacer()
+                    }
                 }
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.capsule)
+                .controlSize(.large)
+                .tint(.blue)
+                .disabled(isCalculatingRoute)
+
+                if let err = routeCalculationError {
+                    Text(err)
+                        .font(.system(size: 12))
+                        .foregroundColor(.orange)
+                }
+
+                if totalDistanceMeters > 0 {
+                    HStack {
+                        Text("Calculated Road Distance")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(String(format: "%.2f km", totalDistanceMeters / 1000.0))
+                            .font(.system(.body, design: .monospaced))
+                            .fontWeight(.semibold)
+                    }
+                }
+            } header: {
+                Text("ROUTE ENDPOINTS")
             }
-        }
-        .padding(14)
-        .liquidGlassCard(cornerRadius: 16)
-    }
 
-    // MARK: - 2. Travel Profile Card
-    private var travelProfileCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("TRAVEL PROFILE")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(.secondary)
+            // 2. Travel Profile Section
+            Section {
+                // Segmented Profile
+                Picker("Travel Mode", selection: $selectedMode) {
+                    ForEach(TravelMode.allCases) { mode in
+                        Label(mode.rawValue, systemImage: mode.iconName)
+                            .tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
 
-            // Segmented Travel Mode
-            HStack(spacing: 6) {
-                ForEach(TravelMode.allCases) { mode in
-                    Button {
-                        HapticFeedback.selection()
-                        selectedMode = mode
-                    } label: {
-                        VStack(spacing: 3) {
-                            Image(systemName: mode.iconName)
-                                .font(.system(size: 13, weight: .medium))
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text("Speed Factor")
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        Text(String(format: "%.1fx (%d km/h)", speedMultiplier, Int(effectiveSpeedKmh)))
+                            .font(.system(.body, design: .monospaced))
+                            .fontWeight(.semibold)
+                            .foregroundColor(.blue)
+                    }
+                    Slider(value: $speedMultiplier, in: 0.5...4.0, step: 0.25)
+                        .tint(.blue)
+                }
+                .padding(.vertical, 4)
 
-                            Text(mode.rawValue)
-                                .font(.system(size: 11, weight: .medium))
+                Toggle("Simulate Road Traffic Variance", isOn: $realisticTraffic)
+                    .tint(.blue)
 
-                            Text("\(Int(mode.baseSpeedKmh)) km/h")
-                                .font(.system(size: 9, design: .monospaced))
+                Toggle("Continuous Route Loop", isOn: $loopMode)
+                    .tint(.blue)
+            } header: {
+                Text("TRAVEL PROFILE")
+            }
+
+            // 3. Playback Section
+            Section {
+                if connectionManager.isRoutePlaying {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ProgressView(value: connectionManager.routeProgress)
+                            .tint(.blue)
+
+                        HStack {
+                            Text("Simulating Route")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(.blue)
+
+                            Spacer()
+
+                            Text(String(format: "%02d:%02d remaining", Int(connectionManager.routeRemainingSeconds) / 60, Int(connectionManager.routeRemainingSeconds) % 60))
+                                .font(.system(size: 12, design: .monospaced))
                                 .foregroundColor(.secondary)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(selectedMode == mode ? Color.blue.opacity(0.15) : Color.primary.opacity(0.03))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(selectedMode == mode ? Color.blue : Color.clear, lineWidth: 1)
-                        )
-                        .foregroundColor(selectedMode == mode ? .blue : .primary)
                     }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            // Speed Slider
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Speed Factor")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                    Spacer()
-                    Text(String(format: "%.1fx (%d km/h)", speedMultiplier, Int(effectiveSpeedKmh)))
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundColor(.blue)
+                    .padding(.vertical, 4)
                 }
 
-                Slider(value: $speedMultiplier, in: 0.5...4.0, step: 0.25)
-                    .tint(.blue)
-            }
-
-            // Traffic Variance & Loop Options
-            Toggle(isOn: $realisticTraffic) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Simulate Road Traffic")
-                        .font(.system(size: 12, weight: .medium))
-                    Text("Natural deceleration on corners and subtle speed variance")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .tint(.blue)
-
-            Toggle(isOn: $loopMode) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Continuous Route Loop")
-                        .font(.system(size: 12, weight: .medium))
-                    Text("Replay route continuously once destination is reached")
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                }
-            }
-            .tint(.blue)
-        }
-        .padding(14)
-        .liquidGlassCard(cornerRadius: 16)
-    }
-
-    // MARK: - 3. Playback Controls Card
-    private var playbackControlsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("SIMULATION PLAYBACK")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(.secondary)
-
-            // Timeline Progress
-            if connectionManager.isRoutePlaying {
-                VStack(spacing: 6) {
-                    ProgressView(value: connectionManager.routeProgress)
-                        .tint(.blue)
-
-                    HStack {
-                        Text("Simulating Route")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.blue)
-
-                        Spacer()
-
-                        Text(String(format: "%02d:%02d remaining", Int(connectionManager.routeRemainingSeconds) / 60, Int(connectionManager.routeRemainingSeconds) % 60))
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.bottom, 4)
-            }
-
-            // Transport Buttons
-            HStack(spacing: 8) {
                 if !connectionManager.isRoutePlaying {
                     Button {
                         HapticFeedback.impact(.medium)
                         startSimulation()
                     } label: {
-                        HStack(spacing: 6) {
+                        HStack {
+                            Spacer()
                             Image(systemName: "play.fill")
-                                .font(.system(size: 12))
-                            Text("Start Route")
-                                .font(.system(size: 13, weight: .semibold))
+                            Text("Start Route Simulation")
+                                .fontWeight(.semibold)
+                            Spacer()
                         }
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 38)
-                        .background(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(routeCoordinates.count >= 2 && connectionManager.status.isConnected ? Color.blue : Color.secondary.opacity(0.3))
-                        )
-                        .foregroundColor(.white)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.capsule)
+                    .controlSize(.large)
+                    .tint(.blue)
                     .disabled(routeCoordinates.count < 2 || !connectionManager.status.isConnected)
                 } else {
-                    if connectionManager.isRoutePaused {
-                        Button {
-                            HapticFeedback.impact(.light)
-                            connectionManager.resumeRoute()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "play.fill")
-                                Text("Resume")
+                    HStack(spacing: 12) {
+                        if connectionManager.isRoutePaused {
+                            Button {
+                                HapticFeedback.impact(.light)
+                                connectionManager.resumeRoute()
+                            } label: {
+                                HStack {
+                                    Spacer()
+                                    Image(systemName: "play.fill")
+                                    Text("Resume")
+                                    Spacer()
+                                }
                             }
-                            .font(.system(size: 12, weight: .medium))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 36)
-                            .background(Color.blue.opacity(0.12))
+                            .buttonStyle(.borderedProminent)
+                            .buttonBorderShape(.capsule)
+                            .tint(.blue)
+                        } else {
+                            Button {
+                                HapticFeedback.impact(.light)
+                                connectionManager.pauseRoute()
+                            } label: {
+                                HStack {
+                                    Spacer()
+                                    Image(systemName: "pause.fill")
+                                    Text("Pause")
+                                    Spacer()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .buttonBorderShape(.capsule)
+                        }
+
+                        Button(role: .destructive) {
+                            HapticFeedback.impact(.light)
+                            connectionManager.stopRoute()
+                        } label: {
+                            HStack {
+                                Spacer()
+                                Image(systemName: "stop.fill")
+                                Text("Stop")
+                                Spacer()
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
+                        .tint(.red)
+                    }
+                }
+            } header: {
+                Text("SIMULATION CONTROLS")
+            }
+
+            // 4. Preset Circuits Section
+            Section {
+                Button {
+                    HapticFeedback.selection()
+                    currentTarget = CLLocationCoordinate2D(latitude: 37.334900, longitude: -122.009020)
+                    destCoordinate = CLLocationCoordinate2D(latitude: 37.331800, longitude: -122.030500)
+                    calculateAppleMapsRoute()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 15))
                             .foregroundColor(.blue)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .frame(width: 24)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Apple Park Perimeter")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.primary)
+                            Text("Cupertino Infinite Loop Circuit (5.2 km)")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
                         }
-                        .buttonStyle(.plain)
-                    } else {
-                        Button {
-                            HapticFeedback.impact(.light)
-                            connectionManager.pauseRoute()
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: "pause.fill")
-                                Text("Pause")
-                            }
-                            .font(.system(size: 12, weight: .medium))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 36)
-                            .background(Color.primary.opacity(0.06))
-                            .foregroundColor(.primary)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
                     }
-
-                    Button {
-                        HapticFeedback.impact(.light)
-                        connectionManager.stopRoute()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "stop.fill")
-                            Text("Stop")
-                        }
-                        .font(.system(size: 12, weight: .medium))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 36)
-                        .background(Color.red.opacity(0.12))
-                        .foregroundColor(.red)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(14)
-        .liquidGlassCard(cornerRadius: 16)
-    }
-
-    // MARK: - 4. Quick Route Presets
-    private var quickRoutesCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("PRESET CIRCUITS")
-                .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .foregroundColor(.secondary)
-
-            VStack(spacing: 6) {
-                presetCircuitRow(
-                    title: "Cupertino Infinite Loop Circuit",
-                    detail: "Apple Park Perimeter (5.2 km)",
-                    icon: "apple.logo",
-                    start: CLLocationCoordinate2D(latitude: 37.334900, longitude: -122.009020),
-                    dest: CLLocationCoordinate2D(latitude: 37.331800, longitude: -122.030500)
-                )
-
-                presetCircuitRow(
-                    title: "Manhattan Midtown Express",
-                    detail: "Central Park to Times Square (3.4 km)",
-                    icon: "building.2.fill",
-                    start: CLLocationCoordinate2D(latitude: 40.765000, longitude: -73.973000),
-                    dest: CLLocationCoordinate2D(latitude: 40.758000, longitude: -73.985500)
-                )
-            }
-        }
-        .padding(14)
-        .liquidGlassCard(cornerRadius: 16)
-    }
-
-    private func presetCircuitRow(title: String, detail: String, icon: String, start: CLLocationCoordinate2D, dest: CLLocationCoordinate2D) -> some View {
-        Button {
-            HapticFeedback.selection()
-            currentTarget = start
-            destCoordinate = dest
-            calculateAppleMapsRoute()
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                    .foregroundColor(.blue)
-                    .frame(width: 26, height: 26)
-                    .background(Color.blue.opacity(0.08))
-                    .clipShape(Circle())
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(title)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.primary)
-                    Text(detail)
-                        .font(.system(size: 10))
-                        .foregroundColor(.secondary)
                 }
 
-                Spacer()
+                Button {
+                    HapticFeedback.selection()
+                    currentTarget = CLLocationCoordinate2D(latitude: 40.765000, longitude: -73.973000)
+                    destCoordinate = CLLocationCoordinate2D(latitude: 40.758000, longitude: -73.985500)
+                    calculateAppleMapsRoute()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "building.2.fill")
+                            .font(.system(size: 15))
+                            .foregroundColor(.blue)
+                            .frame(width: 24)
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(.secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Manhattan Midtown Express")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.primary)
+                            Text("Central Park to Times Square (3.4 km)")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            } header: {
+                Text("PRESET CIRCUITS")
             }
-            .padding(8)
-            .background(Color.primary.opacity(0.03))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
-        .buttonStyle(.plain)
+        .scrollContentBackground(.hidden)
     }
 
-    // MARK: - Route Calculation Logic
     private func calculateAppleMapsRoute() {
         isCalculatingRoute = true
         routeCalculationError = nil
