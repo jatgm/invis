@@ -2,8 +2,10 @@
 //  ControlsView.swift
 //  invis
 //
-//  Control panel for instant location spoofing, high-precision coordinates,
-//  Gaussian micro-jitter drift controls, landmark presets, and safety killswitch.
+//  Liquid Glass Control Surface for Location Simulation.
+//  Strictly adheres to iOS Human Interface Guidelines:
+//  Subtle specular borders, translucent ultra-thin materials,
+//  clean typography, semantic SF Symbols, and zero emojis.
 //
 
 import SwiftUI
@@ -29,24 +31,25 @@ public struct ControlsView: View {
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                // 1. Simulation Actions Card (Spoof & Safety Reset)
-                simulationActionsCard
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 14) {
+                // 1. Primary Simulation Actions
+                primaryActionsCard
 
-                // 2. High-Precision Coordinate Inputs Card
-                coordinateInputsCard
+                // 2. High-Precision Coordinate Telemetry
+                coordinatesInspectorCard
 
-                // 3. Natural Micro-Jitter (GPS Drift) Card
-                microJitterCard
+                // 3. Natural Position Drift (Variance)
+                positionDriftCard
 
-                // 4. Quick Landmark Presets Grid
-                presetsCard
+                // 4. Quick Landmark Locations
+                landmarksGridCard
 
-                // 5. Activity Console / Monospace Log
-                activityConsoleCard
+                // 5. Hardware Activity Diagnostics
+                activityDiagnosticsCard
             }
-            .padding(16)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
         }
         .onAppear {
             syncInputStrings()
@@ -65,245 +68,242 @@ public struct ControlsView: View {
         altString = String(format: "%.1f", targetAltitude)
     }
 
-    // MARK: - Simulation Actions Card
-    private var simulationActionsCard: some View {
-        VStack(spacing: 12) {
-            // Instant Spoof Button
+    // MARK: - 1. Primary Simulation Actions
+    private var primaryActionsCard: some View {
+        VStack(spacing: 10) {
+            // Main Simulate Button
             Button {
+                HapticFeedback.impact(.medium)
                 connectionManager.teleport(to: targetCoordinate, altitude: targetAltitude)
             } label: {
-                HStack {
-                    Image(systemName: "location.fill")
-                        .font(.system(size: 16, weight: .bold))
-                    Text(connectionManager.isSpoofingActive ? "Update Simulated Location" : "Spoof Location")
-                        .font(.system(size: 15, weight: .bold))
+                HStack(spacing: 8) {
+                    Image(systemName: connectionManager.isSpoofingActive ? "location.fill" : "location")
+                        .font(.system(size: 15, weight: .semibold))
+
+                    Text(connectionManager.isSpoofingActive ? "Update Simulation" : "Simulate Location")
+                        .font(.system(size: 15, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity)
-                .frame(height: 42)
+                .frame(height: 44)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(connectionManager.status.isConnected ? Color.blue : Color.secondary.opacity(0.3))
+                )
+                .foregroundColor(.white)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(connectionManager.status.isConnected ? .blue : .gray)
+            .buttonStyle(.plain)
             .disabled(!connectionManager.status.isConnected)
 
-            // Safety Reset (Killswitch) Button
-            Button {
-                showResetConfirm = true
-            } label: {
-                HStack {
-                    Image(systemName: "arrow.counterclockwise.circle.fill")
-                        .font(.system(size: 15, weight: .bold))
-                    Text("Reset to Physical GPS (Killswitch)")
-                        .font(.system(size: 13, weight: .semibold))
+            // Reset Hardware GPS Button
+            if connectionManager.isSpoofingActive {
+                Button {
+                    HapticFeedback.impact(.light)
+                    showResetConfirm = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Restore Hardware GPS")
+                            .font(.system(size: 13, weight: .medium))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
+                    .background(Color.red.opacity(0.12))
+                    .foregroundColor(.red)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-            }
-            .buttonStyle(.bordered)
-            .tint(.red)
-            .disabled(!connectionManager.status.isConnected && !connectionManager.isSpoofingActive)
-            .confirmationDialog(
-                "Reset to Physical GPS?",
-                isPresented: $showResetConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Reset Hardware GPS", role: .destructive) {
-                    connectionManager.resetLocation()
+                .buttonStyle(.plain)
+                .confirmationDialog(
+                    "Restore Hardware GPS?",
+                    isPresented: $showResetConfirm,
+                    titleVisibility: .visible
+                ) {
+                    Button("Restore Authentic Location", role: .destructive) {
+                        HapticFeedback.notification(.success)
+                        connectionManager.resetLocation()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This clears active location simulation on the connected hardware and restores authentic system GPS.")
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This will instantly stop all spoofing, close active overrides on the Pico dongle, and restore your device's authentic hardware GPS signal.")
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .liquidGlassCard(cornerRadius: 16)
     }
 
-    // MARK: - Coordinate Inputs Card
-    private var coordinateInputsCard: some View {
+    // MARK: - 2. Coordinates Inspector
+    private var coordinatesInspectorCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("MANUAL COORDINATES")
-                    .font(.system(size: 11, weight: .bold))
+                Text("COORDINATES")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundColor(.secondary)
+
                 Spacer()
 
                 Button {
-                    // Quick San Francisco / Default reset
+                    HapticFeedback.selection()
                     targetCoordinate = CLLocationCoordinate2D(latitude: 37.334900, longitude: -122.009020)
                 } label: {
-                    Text("Reset Default")
-                        .font(.system(size: 11))
+                    Text("Cupertino Default")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.blue)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.blue)
             }
 
             VStack(spacing: 8) {
-                // Latitude Input
-                HStack {
-                    Text("LAT")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .frame(width: 32, alignment: .leading)
-
-                    TextField("-90.0 to 90.0", text: $latString)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13, design: .monospaced))
-                        .onSubmit {
-                            if let val = Double(latString), val >= -90.0 && val <= 90.0 {
-                                targetCoordinate.latitude = val
-                            } else {
-                                syncInputStrings()
-                            }
-                        }
-
-                    // Stepper nudge
-                    HStack(spacing: 2) {
-                        Button {
-                            targetCoordinate.latitude = min(90.0, targetCoordinate.latitude + 0.001)
-                        } label: {
-                            Image(systemName: "plus")
-                                .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-
-                        Button {
-                            targetCoordinate.latitude = max(-90.0, targetCoordinate.latitude - 0.001)
-                        } label: {
-                            Image(systemName: "minus")
-                                .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                    }
+                // Latitude Row
+                coordinateFieldRow(label: "LAT", text: $latString) { val in
+                    if val >= -90.0 && val <= 90.0 { targetCoordinate.latitude = val }
+                } stepAction: { delta in
+                    targetCoordinate.latitude = min(90.0, max(-90.0, targetCoordinate.latitude + delta))
                 }
 
-                // Longitude Input
-                HStack {
-                    Text("LON")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundColor(.secondary)
-                        .frame(width: 32, alignment: .leading)
-
-                    TextField("-180.0 to 180.0", text: $lonString)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.system(size: 13, design: .monospaced))
-                        .onSubmit {
-                            if let val = Double(lonString), val >= -180.0 && val <= 180.0 {
-                                targetCoordinate.longitude = val
-                            } else {
-                                syncInputStrings()
-                            }
-                        }
-
-                    // Stepper nudge
-                    HStack(spacing: 2) {
-                        Button {
-                            targetCoordinate.longitude = min(180.0, targetCoordinate.longitude + 0.001)
-                        } label: {
-                            Image(systemName: "plus")
-                                .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-
-                        Button {
-                            targetCoordinate.longitude = max(-180.0, targetCoordinate.longitude - 0.001)
-                        } label: {
-                            Image(systemName: "minus")
-                                .frame(width: 24, height: 24)
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.mini)
-                    }
+                // Longitude Row
+                coordinateFieldRow(label: "LON", text: $lonString) { val in
+                    if val >= -180.0 && val <= 180.0 { targetCoordinate.longitude = val }
+                } stepAction: { delta in
+                    targetCoordinate.longitude = min(180.0, max(-180.0, targetCoordinate.longitude + delta))
                 }
 
-                // Altitude Input
-                HStack {
+                // Altitude Row
+                HStack(spacing: 8) {
                     Text("ALT")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .foregroundColor(.secondary)
                         .frame(width: 32, alignment: .leading)
 
-                    TextField("Meters (e.g. 15.0)", text: $altString)
-                        .textFieldStyle(.roundedBorder)
+                    TextField("Meters", text: $altString)
+                        .textFieldStyle(.plain)
                         .font(.system(size: 13, design: .monospaced))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(Color.primary.opacity(0.04))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .onSubmit {
-                            if let val = Double(altString) {
-                                targetAltitude = val
-                            } else {
-                                syncInputStrings()
-                            }
+                            if let val = Double(altString) { targetAltitude = val }
                         }
 
-                    Text("m")
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    Text("meters")
+                        .font(.system(size: 11, weight: .regular))
                         .foregroundColor(.secondary)
                 }
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .liquidGlassCard(cornerRadius: 16)
     }
 
-    // MARK: - Natural Micro-Jitter (GPS Drift) Card
-    private var microJitterCard: some View {
+    private func coordinateFieldRow(
+        label: String,
+        text: Binding<String>,
+        onCommit: @escaping (Double) -> Void,
+        stepAction: @escaping (Double) -> Void
+    ) -> some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundColor(.secondary)
+                .frame(width: 32, alignment: .leading)
+
+            TextField(label, text: text)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13, design: .monospaced))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.primary.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .onSubmit {
+                    if let val = Double(text.wrappedValue) { onCommit(val) }
+                    else { syncInputStrings() }
+                }
+
+            // Inline Steppers
+            HStack(spacing: 1) {
+                Button {
+                    HapticFeedback.selection()
+                    stepAction(0.001)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 26, height: 26)
+                        .background(Color.primary.opacity(0.04))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    HapticFeedback.selection()
+                    stepAction(-0.001)
+                } label: {
+                    Image(systemName: "minus")
+                        .font(.system(size: 10, weight: .semibold))
+                        .frame(width: 26, height: 26)
+                        .background(Color.primary.opacity(0.04))
+                }
+                .buttonStyle(.plain)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+
+    // MARK: - 3. Natural Position Drift
+    private var positionDriftCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Toggle(isOn: $connectionManager.naturalDriftEnabled) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Realistic Micro-Jitter")
+                    Text("Natural Position Drift")
                         .font(.system(size: 13, weight: .semibold))
-                    Text("Gaussian random-walk drift to evade static detection")
+                    Text("Simulates natural multi-path variance with Gaussian random walk")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                 }
             }
-            .tint(.cyan)
+            .tint(.blue)
             .onChange(of: connectionManager.naturalDriftEnabled) { _, newValue in
+                HapticFeedback.selection()
                 connectionManager.setNaturalDrift(enabled: newValue, radiusMeters: connectionManager.driftRadiusMeters)
             }
 
             if connectionManager.naturalDriftEnabled {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     HStack {
-                        Text("Drift Radius:")
-                            .font(.system(size: 11, weight: .medium))
+                        Text("Variance Radius")
+                            .font(.system(size: 11, weight: .regular))
                             .foregroundColor(.secondary)
+
                         Spacer()
-                        Text(String(format: "±%.1f meters (σ)", connectionManager.driftRadiusMeters))
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .foregroundColor(.cyan)
+
+                        Text(String(format: "±%.1f m", connectionManager.driftRadiusMeters))
+                            .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                            .foregroundColor(.blue)
                     }
 
-                    Slider(value: $connectionManager.driftRadiusMeters, in: 0.5...5.0, step: 0.1) {
-                        Text("Jitter Radius")
-                    }
-                    .tint(.cyan)
-                    .onChange(of: connectionManager.driftRadiusMeters) { _, newValue in
-                        connectionManager.setNaturalDrift(enabled: true, radiusMeters: newValue)
-                    }
+                    Slider(value: $connectionManager.driftRadiusMeters, in: 0.5...5.0, step: 0.2)
+                        .tint(.blue)
+                        .onChange(of: connectionManager.driftRadiusMeters) { _, newValue in
+                            connectionManager.setNaturalDrift(enabled: true, radiusMeters: newValue)
+                        }
                 }
                 .padding(.top, 4)
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .liquidGlassCard(cornerRadius: 16)
     }
 
-    // MARK: - Presets Card
-    private var presetsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("LANDMARK PRESETS")
-                .font(.system(size: 11, weight: .bold))
+    // MARK: - 4. Landmarks Grid
+    private var landmarksGridCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("LANDMARKS")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundColor(.secondary)
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                 ForEach(LocationEngine.defaultPresets) { preset in
                     Button {
+                        HapticFeedback.selection()
                         targetCoordinate = preset.coordinate
                         targetAltitude = preset.altitude
                         if connectionManager.status.isConnected && connectionManager.isSpoofingActive {
@@ -312,58 +312,65 @@ public struct ControlsView: View {
                     } label: {
                         HStack(spacing: 8) {
                             Image(systemName: preset.symbolName)
-                                .font(.system(size: 12))
+                                .font(.system(size: 12, weight: .medium))
                                 .foregroundColor(.blue)
-                                .frame(width: 18)
+                                .frame(width: 24, height: 24)
+                                .background(Color.blue.opacity(0.08))
+                                .clipShape(Circle())
+
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(preset.name)
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.system(size: 12, weight: .medium))
                                     .foregroundColor(.primary)
                                     .lineLimit(1)
+
                                 Text(preset.subtitle)
-                                    .font(.system(size: 9))
+                                    .font(.system(size: 10))
                                     .foregroundColor(.secondary)
                                     .lineLimit(1)
                             }
-                            Spacer()
+                            Spacer(minLength: 0)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 8)
-                        .background(Color.secondary.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .background(Color.primary.opacity(0.03))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .liquidGlassCard(cornerRadius: 16)
     }
 
-    // MARK: - Activity Console Card
-    private var activityConsoleCard: some View {
+    // MARK: - 5. Activity Diagnostics
+    private var activityDiagnosticsCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("WIRED ACTIVITY LOG")
-                    .font(.system(size: 11, weight: .bold))
+                Text("DIAGNOSTICS")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundColor(.secondary)
+
                 Spacer()
 
                 Button {
                     connectionManager.clearLogs()
                 } label: {
                     Text("Clear")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.secondary)
 
                 Button {
-                    isConsoleExpanded.toggle()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        isConsoleExpanded.toggle()
+                    }
                 } label: {
                     Image(systemName: isConsoleExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 10))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
             }
@@ -378,7 +385,7 @@ public struct ControlsView: View {
                                     .foregroundColor(.secondary)
 
                                 Text("[\(entry.tag)]")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .font(.system(size: 9, weight: .semibold, design: .monospaced))
                                     .foregroundColor(colorForTag(entry.tag))
 
                                 Text(entry.message)
@@ -389,11 +396,11 @@ public struct ControlsView: View {
                             .id(entry.id)
                         }
                     }
+                    .padding(6)
                 }
-                .frame(maxHeight: isConsoleExpanded ? 240 : 90)
-                .padding(8)
-                .background(Color.black.opacity(0.4))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .frame(maxHeight: isConsoleExpanded ? 220 : 80)
+                .background(Color.black.opacity(0.20))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .onChange(of: connectionManager.logs.count) { _, _ in
                     if let last = connectionManager.logs.last {
                         proxy.scrollTo(last.id, anchor: .bottom)
@@ -402,8 +409,7 @@ public struct ControlsView: View {
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .liquidGlassCard(cornerRadius: 16)
     }
 
     private func colorForTag(_ tag: String) -> Color {
@@ -411,8 +417,8 @@ public struct ControlsView: View {
         case "TX": return .cyan
         case "RX": return .green
         case "ERR": return .red
-        case "WARN": return .yellow
-        case "MAP": return .purple
+        case "WARN": return .orange
+        case "MAP": return .blue
         default: return .secondary
         }
     }

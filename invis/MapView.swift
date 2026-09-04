@@ -2,8 +2,10 @@
 //  MapView.swift
 //  invis
 //
-//  Native Apple Maps (MapKit) view with pin placement, MapReader tap-to-set,
-//  autocomplete place search, 3D terrain pitch, and route polyline rendering.
+//  Liquid Glass MapKit View for iOS.
+//  Strictly conforms to iOS Human Interface Guidelines:
+//  Subtle specular borders, translucent ultra-thin materials,
+//  clean typography, semantic SF Symbols, and zero emojis.
 //
 
 import SwiftUI
@@ -26,7 +28,7 @@ public final class MapSearchCompleter: NSObject, ObservableObject, MKLocalSearch
         completer.resultTypes = [.address, .pointOfInterest]
 
         cancellable = $queryFragment
-            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .debounce(for: .milliseconds(250), scheduler: RunLoop.main)
             .sink { [weak self] query in
                 guard let self = self else { return }
                 if query.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -52,7 +54,7 @@ public final class MapSearchCompleter: NSObject, ObservableObject, MKLocalSearch
     public func selectSuggestion(_ suggestion: MKLocalSearchCompletion, completion: @escaping (CLLocationCoordinate2D?, String) -> Void) {
         let searchRequest = MKLocalSearch.Request(completion: suggestion)
         let search = MKLocalSearch(request: searchRequest)
-        search.start { response, error in
+        search.start { response, _ in
             if let coordinate = response?.mapItems.first?.placemark.coordinate {
                 completion(coordinate, suggestion.title)
             } else {
@@ -72,18 +74,17 @@ public struct MapView: View {
     @ObservedObject var connectionManager: WiredConnectionManager = .shared
     @StateObject private var searchCompleter = MapSearchCompleter()
 
-    // Map state
+    // Map camera state
     @State private var cameraPosition: MapCameraPosition = .camera(
         MapCamera(
             centerCoordinate: CLLocationCoordinate2D(latitude: 37.334900, longitude: -122.009020),
-            distance: 2500,
+            distance: 2200,
             heading: 0,
             pitch: 0
         )
     )
     @State private var is3DPitchEnabled: Bool = false
-    @State private var showSearchResults: Bool = false
-    @State private var pulseSimulatedPin: Bool = false
+    @State private var isPulsingPin: Bool = false
 
     public init(
         targetCoordinate: Binding<CLLocationCoordinate2D>,
@@ -99,31 +100,31 @@ public struct MapView: View {
 
     public var body: some View {
         ZStack(alignment: .top) {
-            // Modern MapKit with MapReader for click/tap detection
+            // MapKit Surface
             MapReader { proxy in
                 Map(position: $cameraPosition) {
                     // Target Coordinate Pin
-                    Annotation("Target Pin", coordinate: targetCoordinate) {
-                        TargetMarkerPin(coordinate: targetCoordinate, altitude: targetAltitude)
+                    Annotation("Target", coordinate: targetCoordinate) {
+                        TargetMarkerPin(coordinate: targetCoordinate)
                     }
 
-                    // Simulated GPS Location Pin (Active Spoofed position from Dongle)
+                    // Active Simulated Location Beacon
                     if let spoofed = connectionManager.currentSpoofedLocation {
-                        Annotation("Spoofed GPS", coordinate: spoofed) {
-                            SpoofedBeaconPin(pulse: pulseSimulatedPin)
+                        Annotation("Simulated GPS", coordinate: spoofed) {
+                            SimulatedBeaconPin(pulse: isPulsingPin)
                         }
                     }
 
-                    // Render Route Polyline if planned
+                    // Polyline
                     if routeCoordinates.count >= 2 {
                         MapPolyline(coordinates: routeCoordinates)
                             .stroke(
                                 LinearGradient(
-                                    colors: [.blue, .cyan, .teal],
+                                    colors: [Color.blue, Color.cyan],
                                     startPoint: .leading,
                                     endPoint: .trailing
                                 ),
-                                lineWidth: 5
+                                lineWidth: 4.5
                             )
                     }
                 }
@@ -134,22 +135,26 @@ public struct MapView: View {
                 }
                 .onTapGesture { screenCoord in
                     if let newCoord = proxy.convert(screenCoord, from: .local) {
+                        HapticFeedback.selection()
                         targetCoordinate = newCoord
-                        connectionManager.log(tag: "MAP", message: "Target pinned to (\(String(format: "%.6f", newCoord.latitude)), \(String(format: "%.6f", newCoord.longitude)))")
+                        connectionManager.log(tag: "MAP", message: "Target -> (\(String(format: "%.6f", newCoord.latitude)), \(String(format: "%.6f", newCoord.longitude)))")
                     }
                 }
             }
             .ignoresSafeArea()
 
-            // Floating Top Controls Bar: Search & Utilities
+            // Floating Top Controls Bar (Search + Quick Tools)
             VStack(spacing: 8) {
                 HStack(spacing: 8) {
-                    // Autocomplete Search Bar
+                    // Glass Search Bar
                     HStack(spacing: 8) {
                         Image(systemName: "magnifyingglass")
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.secondary)
-                        TextField("Search address, landmark, or city...", text: $searchCompleter.queryFragment)
+
+                        TextField("Search address, city, or landmark...", text: $searchCompleter.queryFragment)
                             .textFieldStyle(.plain)
+                            .font(.system(size: 13))
                             .onSubmit {
                                 performDirectSearch()
                             }
@@ -157,9 +162,10 @@ public struct MapView: View {
                         if !searchCompleter.queryFragment.isEmpty {
                             Button {
                                 searchCompleter.queryFragment = ""
-                                showSearchResults = false
+                                searchCompleter.suggestions = []
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 13))
                                     .foregroundColor(.secondary)
                             }
                             .buttonStyle(.plain)
@@ -167,46 +173,44 @@ public struct MapView: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
-                    .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .shadow(color: Color.black.opacity(0.15), radius: 6, x: 0, y: 3)
+                    .liquidGlassCard(cornerRadius: 12)
 
-                    // Center to Target Pin
+                    // Re-center on Pin
                     Button {
+                        HapticFeedback.selection()
                         centerCamera(on: targetCoordinate)
                     } label: {
                         Image(systemName: "scope")
-                            .font(.system(size: 14, weight: .bold))
-                            .frame(width: 34, height: 34)
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(width: 36, height: 36)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.blue)
-                    .clipShape(Circle())
-                    .help("Center to Target Pin")
+                    .buttonStyle(.plain)
+                    .liquidGlassCapsule()
 
-                    // 3D Terrain Pitch Toggle
+                    // 3D Elevation Toggle
                     Button {
+                        HapticFeedback.selection()
                         toggle3DPitch()
                     } label: {
-                        Text("3D")
-                            .font(.system(size: 11, weight: .bold))
-                            .frame(width: 34, height: 34)
+                        Image(systemName: "cube.transparent")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(is3DPitchEnabled ? .blue : .primary)
+                            .frame(width: 36, height: 36)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(is3DPitchEnabled ? .cyan : .secondary)
-                    .clipShape(Circle())
-                    .help("Toggle 3D Terrain Pitch")
+                    .buttonStyle(.plain)
+                    .liquidGlassCapsule()
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 10)
+                .padding(.top, 8)
 
-                // Search Results Dropdown
+                // Search Autocomplete Dropdown
                 if !searchCompleter.suggestions.isEmpty {
                     VStack(alignment: .leading, spacing: 0) {
                         ScrollView {
                             LazyVStack(alignment: .leading, spacing: 0) {
                                 ForEach(searchCompleter.suggestions, id: \.self) { suggestion in
                                     Button {
+                                        HapticFeedback.selection()
                                         searchCompleter.selectSuggestion(suggestion) { coordinate, title in
                                             if let coordinate = coordinate {
                                                 targetCoordinate = coordinate
@@ -216,7 +220,7 @@ public struct MapView: View {
                                             }
                                         }
                                     } label: {
-                                        VStack(alignment: .leading, spacing: 2) {
+                                        VStack(alignment: .leading, spacing: 1) {
                                             Text(suggestion.title)
                                                 .font(.system(size: 13, weight: .medium))
                                                 .foregroundColor(.primary)
@@ -236,92 +240,89 @@ public struct MapView: View {
                                 }
                             }
                         }
-                        .frame(maxHeight: 200)
+                        .frame(maxHeight: 180)
                     }
-                    .background(.ultraThickMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+                    .liquidGlassCard(cornerRadius: 12)
                     .padding(.horizontal, 16)
                 }
 
                 Spacer()
 
+                // Landscape / iPad Floating Bottom Pill
                 if showBottomInfoBar {
-                    // Floating Bottom Info Bar (Coordinates & Altitude Readouts)
-                    HStack(spacing: 16) {
-                        HStack(spacing: 6) {
-                            Text("LAT:")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    HStack(spacing: 14) {
+                        HStack(spacing: 5) {
+                            Text("LAT")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
                                 .foregroundColor(.secondary)
-                            Text(String(format: "%.6f°", targetCoordinate.latitude))
+                            Text(String(format: "%.5f°", targetCoordinate.latitude))
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         }
 
                         Divider()
-                            .frame(height: 12)
+                            .frame(height: 10)
 
-                        HStack(spacing: 6) {
-                            Text("LON:")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        HStack(spacing: 5) {
+                            Text("LON")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
                                 .foregroundColor(.secondary)
-                            Text(String(format: "%.6f°", targetCoordinate.longitude))
+                            Text(String(format: "%.5f°", targetCoordinate.longitude))
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         }
 
                         Divider()
-                            .frame(height: 12)
+                            .frame(height: 10)
 
-                        HStack(spacing: 6) {
-                            Text("ALT:")
-                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        HStack(spacing: 5) {
+                            Text("ALT")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
                                 .foregroundColor(.secondary)
-                            Text(String(format: "%.1f m", targetAltitude))
+                            Text(String(format: "%.0f m", targetAltitude))
                                 .font(.system(size: 12, weight: .semibold, design: .monospaced))
                         }
 
                         Spacer()
 
-                        // Quick Teleport Trigger on Pin
                         Button {
+                            HapticFeedback.impact(.medium)
                             connectionManager.teleport(to: targetCoordinate, altitude: targetAltitude)
                         } label: {
                             HStack(spacing: 4) {
-                                Image(systemName: "bolt.fill")
-                                Text("Spoof Here")
+                                Image(systemName: "location.fill")
+                                    .font(.system(size: 10))
+                                Text("Simulate Here")
+                                    .font(.system(size: 11, weight: .semibold))
                             }
-                            .font(.system(size: 11, weight: .bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .clipShape(Capsule())
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.blue)
-                        .controlSize(.small)
+                        .buttonStyle(.plain)
                         .disabled(!connectionManager.status.isConnected)
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(.ultraThinMaterial)
-                    .clipShape(Capsule())
-                    .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 2)
+                    .liquidGlassCapsule()
                     .padding(.horizontal, 16)
                     .padding(.bottom, 16)
                 }
             }
         }
         .onAppear {
-            pulseSimulatedPin = true
-        }
-        .onChange(of: targetCoordinate.latitude) { _, _ in
-            // Keep centered if desired
+            isPulsingPin = true
         }
     }
 
     private func centerCamera(on coordinate: CLLocationCoordinate2D) {
-        withAnimation(.easeInOut(duration: 0.8)) {
+        withAnimation(.easeInOut(duration: 0.6)) {
             cameraPosition = .camera(
                 MapCamera(
                     centerCoordinate: coordinate,
                     distance: 1800,
                     heading: 0,
-                    pitch: is3DPitchEnabled ? 60 : 0
+                    pitch: is3DPitchEnabled ? 55 : 0
                 )
             )
         }
@@ -329,13 +330,13 @@ public struct MapView: View {
 
     private func toggle3DPitch() {
         is3DPitchEnabled.toggle()
-        withAnimation(.easeInOut(duration: 0.6)) {
+        withAnimation(.easeInOut(duration: 0.5)) {
             cameraPosition = .camera(
                 MapCamera(
                     centerCoordinate: targetCoordinate,
                     distance: 1800,
                     heading: 0,
-                    pitch: is3DPitchEnabled ? 60 : 0
+                    pitch: is3DPitchEnabled ? 55 : 0
                 )
             )
         }
@@ -345,7 +346,7 @@ public struct MapView: View {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = searchCompleter.queryFragment
         let search = MKLocalSearch(request: request)
-        search.start { response, error in
+        search.start { response, _ in
             if let item = response?.mapItems.first {
                 targetCoordinate = item.placemark.coordinate
                 centerCamera(on: item.placemark.coordinate)
@@ -358,50 +359,52 @@ public struct MapView: View {
 // MARK: - Target Marker Pin
 fileprivate struct TargetMarkerPin: View {
     let coordinate: CLLocationCoordinate2D
-    let altitude: Double
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
                 Circle()
-                    .fill(Color.orange.opacity(0.25))
-                    .frame(width: 32, height: 32)
+                    .fill(Color.blue.opacity(0.18))
+                    .frame(width: 28, height: 28)
+
                 Circle()
-                    .fill(Color.orange)
-                    .frame(width: 18, height: 18)
-                Image(systemName: "target")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
+                    .fill(Color.blue)
+                    .frame(width: 16, height: 16)
+                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
+
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 5, height: 5)
             }
 
             Image(systemName: "arrowtriangle.down.fill")
-                .font(.system(size: 10))
-                .foregroundColor(.orange)
-                .offset(y: -3)
+                .font(.system(size: 8))
+                .foregroundColor(.blue)
+                .offset(y: -2)
         }
     }
 }
 
-// MARK: - Spoofed Beacon Pin (Active Hardware Output)
-fileprivate struct SpoofedBeaconPin: View {
+// MARK: - Simulated Beacon Pin (Native Blue Halo)
+fileprivate struct SimulatedBeaconPin: View {
     let pulse: Bool
 
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color.blue.opacity(0.25))
-                .frame(width: 44, height: 44)
-                .scaleEffect(pulse ? 1.4 : 0.9)
-                .opacity(pulse ? 0.0 : 1.0)
+                .fill(Color.green.opacity(0.20))
+                .frame(width: 38, height: 38)
+                .scaleEffect(pulse ? 1.35 : 0.95)
+                .opacity(pulse ? 0.0 : 0.8)
                 .animation(.easeOut(duration: 1.8).repeatForever(autoreverses: false), value: pulse)
 
             Circle()
-                .fill(Color.blue.opacity(0.3))
-                .frame(width: 26, height: 26)
+                .fill(Color.green.opacity(0.25))
+                .frame(width: 22, height: 22)
 
             Circle()
-                .fill(Color.blue)
-                .frame(width: 14, height: 14)
+                .fill(Color.green)
+                .frame(width: 12, height: 12)
                 .overlay(Circle().stroke(Color.white, lineWidth: 2))
         }
     }

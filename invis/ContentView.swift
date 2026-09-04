@@ -2,8 +2,10 @@
 //  ContentView.swift
 //  invis
 //
-//  Main application container with Apple Maps, Wired Pico dongle status,
-//  sidebar controls, route simulation, and responsive layout.
+//  Main application container with Liquid Glass design system.
+//  Strictly conforms to iOS Human Interface Guidelines:
+//  Translucent layered materials, specular edge highlights,
+//  clean typography, semantic SF Symbols, and zero emojis.
 //
 
 import SwiftUI
@@ -13,17 +15,17 @@ import CoreLocation
 public struct ContentView: View {
     @StateObject private var connectionManager = WiredConnectionManager.shared
 
-    // Active target coordinate (default Cupertino Apple Park)
+    // Active target coordinate (Cupertino default)
     @State private var targetCoordinate = CLLocationCoordinate2D(latitude: 37.334900, longitude: -122.009020)
     @State private var targetAltitude: Double = 15.0
     @State private var routeCoordinates: [CLLocationCoordinate2D] = []
 
-    // UI Tab selection
+    // Navigation Tab Selection
     @State private var selectedTab: ControlTab = .instantSpoof
 
     public enum ControlTab: String, CaseIterable, Identifiable {
-        case instantSpoof = "Teleport & Presets"
-        case routePlanner = "Route Planner"
+        case instantSpoof = "Location"
+        case routePlanner = "Route"
 
         public var id: String { rawValue }
 
@@ -39,17 +41,17 @@ public struct ContentView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            // Persistent Top Wired Status Bar
+            // Floating Top Wired Status Bar
             WiredStatusView()
 
-            // iOS Layout: Overlay bottom sheet or adaptive layout
+            // Adaptive Map & Control Layout
             GeometryReader { geo in
-                if geo.size.width > 700 {
-                    // iPad Landscape / Split
+                if geo.size.width > 720 {
+                    // iPad Landscape / Split View
                     HStack(spacing: 0) {
                         sidebarContent
-                            .frame(width: 380)
-                            .background(.regularMaterial)
+                            .frame(width: 360)
+                            .background(.ultraThinMaterial)
 
                         Divider()
 
@@ -61,7 +63,7 @@ public struct ContentView: View {
                         )
                     }
                 } else {
-                    // iPhone Portrait Stack
+                    // iPhone Portrait Stack with Liquid Glass Bottom Sheet
                     ZStack(alignment: .bottom) {
                         MapView(
                             targetCoordinate: $targetCoordinate,
@@ -70,8 +72,8 @@ public struct ContentView: View {
                             showBottomInfoBar: false
                         )
 
-                        // Collapsible Bottom Card for iPhone
-                        iPhoneControlSheet(geo: geo)
+                        // Collapsible Liquid Glass Sheet
+                        iPhoneGlassControlSheet(geo: geo)
                     }
                 }
             }
@@ -80,24 +82,47 @@ public struct ContentView: View {
         .ignoresSafeArea(edges: .bottom)
     }
 
-    // MARK: - Sidebar Content
+    // MARK: - Sidebar / Sheet Content
     private var sidebarContent: some View {
         VStack(spacing: 0) {
-            // Tab Picker
-            Picker("Mode", selection: $selectedTab) {
+            // Segmented Glass Mode Picker
+            HStack(spacing: 4) {
                 ForEach(ControlTab.allCases) { tab in
-                    Label(tab.rawValue, systemImage: tab.iconName)
-                        .tag(tab)
+                    Button {
+                        HapticFeedback.selection()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            selectedTab = tab
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: tab.iconName)
+                                .font(.system(size: 12, weight: .semibold))
+                            Text(tab.rawValue)
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(
+                            selectedTab == tab ?
+                                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.primary.opacity(0.08)) :
+                                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.clear)
+                        )
+                        .foregroundColor(selectedTab == tab ? .primary : .secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .pickerStyle(.segmented)
+            .padding(3)
+            .background(Color.primary.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
             .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 8)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
 
             Divider()
+                .opacity(0.5)
 
-            // Active Tab View
+            // Active Panel View
             Group {
                 switch selectedTab {
                 case .instantSpoof:
@@ -115,6 +140,7 @@ public struct ContentView: View {
         }
     }
 
+    // MARK: - iPhone Liquid Glass Sheet
     public enum SheetDetent: Equatable {
         case minimized
         case medium
@@ -123,10 +149,10 @@ public struct ContentView: View {
 
     @State private var sheetDetent: SheetDetent = .minimized
 
-    private func iPhoneControlSheet(geo: GeometryProxy) -> some View {
+    private func iPhoneGlassControlSheet(geo: GeometryProxy) -> some View {
         let bottomSafeInset = max(geo.safeAreaInsets.bottom, 16)
-        let mediumHeight: CGFloat = 310
-        let expandedHeight: CGFloat = min(geo.size.height * 0.78, 580)
+        let mediumHeight: CGFloat = 320
+        let expandedHeight: CGFloat = min(geo.size.height * 0.78, 560)
 
         let contentMaxHeight: CGFloat
         switch sheetDetent {
@@ -140,17 +166,18 @@ public struct ContentView: View {
 
         return VStack(spacing: 0) {
             if sheetDetent == .minimized {
-                // Compact Peek State: Handle + slim info & spoof action bar
+                // Minimized Peek Pill
                 VStack(spacing: 6) {
                     Capsule()
-                        .fill(Color.secondary.opacity(0.4))
-                        .frame(width: 36, height: 5)
+                        .fill(Color.secondary.opacity(0.35))
+                        .frame(width: 36, height: 4.5)
                         .padding(.top, 8)
 
                     minimizedPeekBar
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    HapticFeedback.selection()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                         sheetDetent = .medium
                     }
@@ -159,6 +186,7 @@ public struct ContentView: View {
                     DragGesture(minimumDistance: 10)
                         .onEnded { value in
                             if value.translation.height < -20 {
+                                HapticFeedback.selection()
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                                     sheetDetent = .medium
                                 }
@@ -174,14 +202,13 @@ public struct ContentView: View {
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
-            // Bottom safe area spacing so buttons sit cleanly above home indicator
             Spacer(minLength: 0)
                 .frame(height: bottomSafeInset)
         }
         .frame(maxWidth: .infinity)
         .background(
             Rectangle()
-                .fill(.ultraThickMaterial)
+                .fill(.ultraThinMaterial)
                 .ignoresSafeArea(edges: .bottom)
         )
         .clipShape(
@@ -193,59 +220,86 @@ public struct ContentView: View {
                 style: .continuous
             )
         )
-        .shadow(color: Color.black.opacity(0.28), radius: 12, x: 0, y: -4)
+        .overlay(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 24,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                topTrailingRadius: 24,
+                style: .continuous
+            )
+            .strokeBorder(
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.40),
+                        Color.white.opacity(0.12),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ),
+                lineWidth: 0.5
+            )
+        )
+        .shadow(color: Color.black.opacity(0.18), radius: 16, x: 0, y: -4)
         .ignoresSafeArea(edges: .bottom)
     }
 
     // MARK: - iPhone Header Bar (Medium / Expanded)
     private var sheetHeaderBar: some View {
         HStack(spacing: 8) {
-            // Mode Title & Icon
+            // Mode Indicator
             HStack(spacing: 6) {
                 Image(systemName: selectedTab.iconName)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.blue)
+
                 Text(selectedTab.rawValue)
                     .font(.system(size: 13, weight: .bold))
             }
 
             Spacer()
 
-            // Drag handle capsule in the center
+            // Center Grabber Handle
             Capsule()
-                .fill(Color.secondary.opacity(0.4))
-                .frame(width: 36, height: 5)
+                .fill(Color.secondary.opacity(0.35))
+                .frame(width: 36, height: 4.5)
 
             Spacer()
 
-            // Expand / Minimize Buttons
-            HStack(spacing: 8) {
+            // Expand / Minimize Controls
+            HStack(spacing: 6) {
                 if sheetDetent == .medium {
                     Button {
+                        HapticFeedback.selection()
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                             sheetDetent = .expanded
                         }
                     } label: {
                         Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: 11, weight: .bold))
+                            .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.secondary)
-                            .frame(width: 22, height: 22)
+                            .frame(width: 26, height: 26)
+                            .background(Color.primary.opacity(0.04))
+                            .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .help("Expand Full")
                 }
 
                 Button {
+                    HapticFeedback.selection()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                         sheetDetent = .minimized
                     }
                 } label: {
-                    Image(systemName: "chevron.down.circle.fill")
-                        .font(.system(size: 20))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundColor(.secondary)
+                        .frame(width: 26, height: 26)
+                        .background(Color.primary.opacity(0.04))
+                        .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .help("Minimize Controls")
             }
         }
         .padding(.horizontal, 16)
@@ -253,6 +307,7 @@ public struct ContentView: View {
         .padding(.bottom, 6)
         .contentShape(Rectangle())
         .onTapGesture {
+            HapticFeedback.selection()
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                 switch sheetDetent {
                 case .minimized:
@@ -267,6 +322,7 @@ public struct ContentView: View {
         .gesture(
             DragGesture(minimumDistance: 10)
                 .onEnded { value in
+                    HapticFeedback.selection()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                         if value.translation.height < -25 {
                             switch sheetDetent {
@@ -301,52 +357,57 @@ public struct ContentView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(.blue)
                     .frame(width: 28, height: 28)
-                    .background(Color.blue.opacity(0.12))
+                    .background(Color.blue.opacity(0.10))
                     .clipShape(Circle())
 
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 1) {
                     Text(selectedTab.rawValue)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundColor(.primary)
 
                     Text(String(format: "%.4f°, %.4f°", targetCoordinate.latitude, targetCoordinate.longitude))
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .font(.system(size: 11, design: .monospaced))
                         .foregroundColor(.secondary)
                 }
             }
 
             Spacer()
 
-            // Quick Spoof Trigger
+            // Quick Simulate Button
             Button {
+                HapticFeedback.impact(.medium)
                 connectionManager.teleport(to: targetCoordinate, altitude: targetAltitude)
             } label: {
                 HStack(spacing: 4) {
-                    Image(systemName: connectionManager.isSpoofingActive ? "checkmark.circle.fill" : "bolt.fill")
-                        .font(.system(size: 11, weight: .bold))
-                    Text(connectionManager.isSpoofingActive ? "Spoofing" : "Spoof")
-                        .font(.system(size: 11, weight: .bold))
+                    Image(systemName: connectionManager.isSpoofingActive ? "location.fill" : "location")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text(connectionManager.isSpoofingActive ? "Simulating" : "Simulate")
+                        .font(.system(size: 11, weight: .semibold))
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
+                .background(connectionManager.isSpoofingActive ? Color.green : Color.blue)
+                .foregroundColor(.white)
+                .clipShape(Capsule())
             }
-            .buttonStyle(.borderedProminent)
-            .tint(connectionManager.isSpoofingActive ? .green : .blue)
-            .controlSize(.small)
+            .buttonStyle(.plain)
             .disabled(!connectionManager.status.isConnected)
 
             // Expand Chevron
             Button {
+                HapticFeedback.selection()
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                     sheetDetent = .medium
                 }
             } label: {
-                Image(systemName: "chevron.up.circle.fill")
-                    .font(.system(size: 22))
+                Image(systemName: "chevron.up")
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(.secondary)
+                    .frame(width: 24, height: 24)
+                    .background(Color.primary.opacity(0.04))
+                    .clipShape(Circle())
             }
             .buttonStyle(.plain)
-            .help("Expand Controls")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 4)

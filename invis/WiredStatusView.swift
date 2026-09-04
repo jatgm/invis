@@ -2,113 +2,121 @@
 //  WiredStatusView.swift
 //  invis
 //
-//  Wired Hardware Detection & Cable Status Indicator.
-//  Displays real-time USB link state, ping latency, and firmware handshake version.
+//  Liquid Glass Wired Hardware Status Header.
+//  Strictly conforms to iOS Human Interface Guidelines:
+//  Subtle specular border, translucent ultra-thin material,
+//  clean typography, semantic SF Symbols, and zero emojis.
 //
 
 import SwiftUI
 
 public struct WiredStatusView: View {
     @ObservedObject var connectionManager: WiredConnectionManager = .shared
-    @State private var pulseAnimation = false
+    @State private var isPulsing: Bool = false
 
     public init() {}
 
     public var body: some View {
         HStack(spacing: 12) {
-            // Radar Icon Indicator
+            // Status Pip
             ZStack {
                 Circle()
-                    .fill(statusColor.opacity(0.18))
-                    .frame(width: 38, height: 38)
-                    .scaleEffect(pulseAnimation && connectionManager.status.isConnected ? 1.3 : 1.0)
-                    .opacity(pulseAnimation && connectionManager.status.isConnected ? 0.0 : 1.0)
+                    .fill(statusColor.opacity(0.20))
+                    .frame(width: 24, height: 24)
+                    .scaleEffect(isPulsing && connectionManager.status.isConnected ? 1.35 : 1.0)
+                    .opacity(isPulsing && connectionManager.status.isConnected ? 0.0 : 0.8)
                     .animation(
                         connectionManager.status.isConnected ?
-                            Animation.easeOut(duration: 1.5).repeatForever(autoreverses: false) : .default,
-                        value: pulseAnimation
+                            Animation.easeOut(duration: 1.8).repeatForever(autoreverses: false) : .default,
+                        value: isPulsing
                     )
 
                 Circle()
-                    .fill(statusColor.opacity(0.25))
-                    .frame(width: 32, height: 32)
-
-                Image(systemName: statusIconName)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(statusColor)
+                    .fill(statusColor)
+                    .frame(width: 8, height: 8)
             }
+            .frame(width: 24, height: 24)
             .onAppear {
-                pulseAnimation = true
+                isPulsing = true
             }
 
-            // Connection Details
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
-                    Text(statusHeadline)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+            // Status Copy
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(statusTitle)
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.primary)
 
                     if case .connected(_, let version, _) = connectionManager.status {
                         Text(version)
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.green.opacity(0.2))
-                            .foregroundColor(.green)
+                            .background(Color.primary.opacity(0.06))
                             .clipShape(Capsule())
                     }
                 }
 
-                Text(statusSubheadline)
+                Text(statusSubtitle)
                     .font(.system(size: 11, weight: .regular))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            // Ping Latency & Transport Badge
+            // Right Action / Telemetry
             if case .connected(let latency, _, _) = connectionManager.status {
-                VStack(alignment: .trailing, spacing: 3) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bolt.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(.yellow)
-                        Text(String(format: "%.1f ms", latency))
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundColor(.primary)
-                    }
+                HStack(spacing: 5) {
+                    Image(systemName: "cable.connector.horizontal")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
 
-                    Text("WIRED USB")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundColor(.green)
+                    Text(String(format: "%.1f ms", latency))
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(.primary)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color.secondary.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 9)
+                .padding(.vertical, 5)
+                .liquidGlassCapsule()
             } else {
                 Button {
+                    HapticFeedback.impact(.light)
                     connectionManager.startHardwareDiscovery()
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "arrow.clockwise")
-                        Text("Detect")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Connect")
+                            .font(.system(size: 11, weight: .medium))
                     }
-                    .font(.system(size: 11, weight: .medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.plain)
+                .liquidGlassCapsule()
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
-        .overlay(
+        .background(
             Rectangle()
-                .frame(height: 1)
-                .foregroundColor(Color.primary.opacity(0.08)),
-            alignment: .bottom
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Rectangle()
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.35),
+                                    Color.white.opacity(0.08),
+                                    Color.clear
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.5
+                        )
+                )
         )
     }
 
@@ -119,51 +127,34 @@ public struct WiredStatusView: View {
         case .connecting:
             return .orange
         case .disconnected:
-            return .gray
+            return Color.secondary.opacity(0.6)
         }
     }
 
-    private var statusIconName: String {
-        switch connectionManager.status {
-        case .connected(_, _, let transport):
-            if transport.contains("Mac") {
-                return "laptopcomputer"
-            } else if transport.contains("Simulator") {
-                return "desktopcomputer"
-            } else {
-                return "cpu"
-            }
-        case .connecting:
-            return "antenna.radiowaves.left.and.right"
-        case .disconnected:
-            return "cable.connector.slash"
-        }
-    }
-
-    private var statusHeadline: String {
+    private var statusTitle: String {
         switch connectionManager.status {
         case .connected(_, _, let transport):
             if transport.contains("Mac") {
                 return "MacBook USB Bridge"
             } else if transport.contains("Simulator") {
-                return "Simulator Mock Dongle"
+                return "Simulator Interface"
             } else {
-                return "Pico Hardware Dongle"
+                return "Pico Hardware Interface"
             }
         case .connecting:
-            return "Establishing Wired Link..."
+            return "Negotiating Link"
         case .disconnected:
-            return "Hardware Disconnected"
+            return "Hardware Standby"
         }
     }
 
-    private var statusSubheadline: String {
+    private var statusSubtitle: String {
         switch connectionManager.status {
         case .connected(_, _, let transport):
             if let model = connectionManager.connectedDeviceModel {
-                return "\(model) • \(transport)"
+                return "\(model) via \(transport)"
             }
-            return "Active Wired Link: \(transport)"
+            return transport
         case .connecting(let detail):
             return detail
         case .disconnected(let reason):
