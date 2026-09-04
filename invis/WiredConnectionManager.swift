@@ -101,6 +101,7 @@ public final class WiredConnectionManager: ObservableObject {
     private let listenerPort: UInt16 = 9000
     private let picoIP = "192.168.7.1"
     private let networkQueue = DispatchQueue(label: "com.invis.networkQueue", qos: .userInitiated)
+    private var rxBuffer = Data()
 
     public init() {
         startHardwareDiscovery()
@@ -206,8 +207,12 @@ public final class WiredConnectionManager: ObservableObject {
                 guard let self = self else { return }
                 switch state {
                 case .ready:
-                    self.log(tag: "INFO", message: "Connected to outbound endpoint \(host):\(port)")
-                    self.bindConnection(conn, transportName: transportName)
+                    if self.activeConnection == nil {
+                        self.log(tag: "INFO", message: "Connected to outbound endpoint \(host):\(port)")
+                        self.bindConnection(conn, transportName: transportName)
+                    } else {
+                        conn.cancel()
+                    }
                 case .failed, .waiting:
                     conn.cancel()
                 default:
@@ -222,25 +227,58 @@ public final class WiredConnectionManager: ObservableObject {
     // MARK: - Bind Active Connection & Receive Loop
     private func bindConnection(_ conn: NWConnection, transportName: String) {
         // Disconnect previous if any
-        activeConnection?.cancel()
+        if activeConnection !== conn {
+            activeConnection?.cancel()
+        }
         activeConnection = conn
         activeTransportName = transportName
+        rxBuffer.removeAll()
+
+        conn.stateUpdateHandler = { [weak self] state in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                guard self.activeConnection === conn else { return }
+                switch state {
+                case .ready:
+                    self.log(tag: "INFO", message: "Physical link ready: \(transportName)")
+                    self.startHeartbeat()
+                    self.sendPing()
+                case .failed(let error):
+                    self.log(tag: "WARN", message: "Link failed: \(error.localizedDescription)")
+                    self.handleDisconnect(reason: error.localizedDescription)
+                case .cancelled:
+                    self.handleDisconnect(reason: "Connection cancelled")
+                default:
+                    break
+                }
+            }
+        }
+
+        if conn.state == .setup {
+            conn.start(queue: networkQueue)
+        } else if conn.state == .ready {
+            startHeartbeat()
+            sendPing()
+        }
 
         startReceiveLoop(conn)
-        startHeartbeat()
-        sendPing()
     }
 
     private func startReceiveLoop(_ conn: NWConnection) {
-        conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, isComplete, error in
+        conn.receive(minimumIncompleteLength: 1, maximumLength: 65536) { [weak self] data, _, isComplete, error in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 guard self.activeConnection === conn else { return }
 
-                if let data = data, let packetStr = String(data: data, encoding: .utf8) {
-                    let lines = packetStr.components(separatedBy: "\n")
-                    for line in lines where !line.trimmingCharacters(in: .whitespaces).isEmpty {
-                        self.handleIncomingPacket(line)
+                if let data = data, !data.isEmpty {
+                    self.rxBuffer.append(data)
+                    while let newlineIndex = self.rxBuffer.firstIndex(of: 0x0A) { // '\n'
+                        let lineData = self.rxBuffer.prefix(upTo: newlineIndex)
+                        self.rxBuffer.removeSubrange(0...newlineIndex)
+                        if let packetStr = String(data: lineData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                           !packetStr.isEmpty {
+                            self.handleIncomingPacket(packetStr)
+                        }
                     }
                 }
 
@@ -335,6 +373,7 @@ public final class WiredConnectionManager: ObservableObject {
         log(tag: "WARN", message: "Disconnected: \(reason)")
         activeConnection?.cancel()
         activeConnection = nil
+        rxBuffer.removeAll()
         stopHeartbeat()
         status = .disconnected(reason: reason)
     }
